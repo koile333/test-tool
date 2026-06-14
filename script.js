@@ -1,15 +1,53 @@
+// ===== 导航指示器 =====
+const navIndicator = document.getElementById('navIndicator');
+
+function moveNavIndicator(target) {
+    if (!target || !navIndicator) return;
+    const navRect = target.parentElement.getBoundingClientRect();
+    const itemRect = target.getBoundingClientRect();
+    const top = itemRect.top - navRect.top + target.offsetHeight / 2 - 12;
+    navIndicator.style.top = top + 'px';
+    navIndicator.classList.add('visible');
+}
+
 // ===== 工具切换 =====
 document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', function() {
-        const tool = this.dataset.tool;
-        // 更新导航
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        this.classList.add('active');
-        // 切换面板
-        document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
-        document.getElementById('panel-' + tool).classList.add('active');
+        switchTool(this);
+    });
+    item.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            switchTool(this);
+        }
     });
 });
+
+function switchTool(el) {
+    const tool = el.dataset.tool;
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+    moveNavIndicator(el);
+    document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tool).classList.add('active');
+}
+
+// 初始化指示器位置
+const initialActive = document.querySelector('.nav-item.active');
+if (initialActive) {
+    // 延迟执行等 DOM 渲染完毕
+    setTimeout(() => moveNavIndicator(initialActive), 100);
+}
+
+// 侧边栏折叠时重新定位指示器
+const sidebarEl = document.getElementById('sidebar');
+if (sidebarEl) {
+    const observer = new MutationObserver(() => {
+        const active = document.querySelector('.nav-item.active');
+        if (active) setTimeout(() => moveNavIndicator(active), 250);
+    });
+    observer.observe(sidebarEl, { attributes: true, attributeFilter: ['class'] });
+}
 
 // ===== 侧边栏折叠 =====
 document.getElementById('sidebarToggle').addEventListener('click', function() {
@@ -350,10 +388,10 @@ const tool_regex = {
             let html = `<div class="match-count">✅ 匹配到 ${matches.length} 处</div>`;
             matches.forEach((m, i) => {
                 html += `<div class="match-item"><b>#${i+1}:</b> <code>${this._escape(m[0])}</code>`;
-                if (m.index !== undefined) html += ` <span style="color:var(--text-light);font-size:12px">位置:${m.index}</span>`;
+                if (m.index !== undefined) html += ` <span style="color:var(--text-dim);font-size:12px">位置:${m.index}</span>`;
                 if (m.groups) {
                     const groups = Object.entries(m.groups).filter(([,v]) => v !== undefined);
-                    if (groups.length > 0) html += '<br><span style="font-size:12px;color:var(--text-light)">分组: ' + groups.map(([k,v]) => `<code>${k}=${v}</code>`).join(', ') + '</span>';
+                    if (groups.length > 0) html += '<br><span style="font-size:12px;color:var(--text-dim)">分组: ' + groups.map(([k,v]) => `<code>${k}=${v}</code>`).join(', ') + '</span>';
                 }
                 html += '</div>';
             });
@@ -439,9 +477,7 @@ const tool_random = {
             idcard: '身份证号', uuid: 'UUID', number: '数字', string: '随机字符串'
         };
         const now = new Date();
-        const time = String(now.getHours()).padStart(2,'0') + ':' +
-                     String(now.getMinutes()).padStart(2,'0') + ':' +
-                     String(now.getSeconds()).padStart(2,'0');
+        const time = now.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
         this._history.unshift({ type, typeName: typeNames[type], value, time });
         if (this._history.length > 50) this._history.length = 50;
         this._render();
@@ -1548,9 +1584,9 @@ const tool_testcase = {
         this._cases.forEach(c => { dimStats[c.dimension] = (dimStats[c.dimension] || 0) + 1; });
 
         const dimColors = {
-            '功能测试': 'var(--primary)', '边界值': 'var(--warning)',
+            '功能测试': 'var(--accent)', '边界值': 'var(--warning)',
             '异常处理': 'var(--danger)', '性能': '#8b5cf6',
-            '安全': '#ef4444', '兼容性': '#06b6d4', '易用性': 'var(--success)'
+            '安全': '#ec4899', '兼容性': '#06b6d4', '易用性': 'var(--success)'
         };
 
         let html = '<div class="tc-summary-bar">';
@@ -2328,8 +2364,8 @@ const tool_postman = {
         let html = '<div class="pm-summary-bar">';
         html += '<span class="pm-stat-badge">📡 接口总数: ' + this._apis.length + '</span>';
         Object.entries(methodCounts).forEach(([m, c]) => {
-            const colorMap = { GET: 'var(--success)', POST: 'var(--warning)', PUT: 'var(--primary)', DELETE: 'var(--danger)', PATCH: '#8b5cf6' };
-            html += '<span class="pm-stat-badge" style="border-left:3px solid ' + (colorMap[m] || 'var(--text-light)') + '">' + m + ': ' + c + '</span>';
+            const colorMap = { GET: 'var(--success)', POST: 'var(--warning)', PUT: 'var(--accent)', DELETE: 'var(--danger)', PATCH: '#8b5cf6' };
+            html += '<span class="pm-stat-badge" style="border-left:3px solid ' + (colorMap[m] || 'var(--text-dim)') + '">' + m + ': ' + c + '</span>';
         });
 
         // cases 模式：统计测试点
@@ -2981,12 +3017,35 @@ const tool_apitest = {
     _copyOpenAPI() {
         try {
             const el = document.getElementById('api-openapi-output');
-            if (!el) { showToast('请先生成OpenAPI文档'); return; }
-            navigator.clipboard.writeText(el.textContent).then(
-                () => showToast('已复制到剪贴板'),
-                () => showToast('复制失败，请手动复制')
-            );
-        } catch (e) { showToast('复制失败'); }
+            if (!el || !el.textContent) { showToast('请先生成OpenAPI文档'); return; }
+            const text = el.textContent;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(
+                    () => showToast('已复制到剪贴板'),
+                    () => this._fallbackCopy(text)
+                );
+            } else {
+                this._fallbackCopy(text);
+            }
+        } catch (e) { showToast('复制失败：' + e.message); }
+    },
+
+    _fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+            document.execCommand('copy');
+            showToast('已复制到剪贴板');
+        } catch (e) {
+            showToast('复制失败，请手动复制');
+        }
+        document.body.removeChild(ta);
     },
 
     _downloadOpenAPI() {
