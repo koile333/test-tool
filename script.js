@@ -874,9 +874,14 @@ const tool_requirement = {
     }
 };
 
-// ===== 工具：生成测试用例 =====
+// ===== 工具：生成测试用例（7大维度） =====
 const tool_testcase = {
     _cases: [],
+    _pageSize: 110,
+    _currentPage: 1,
+    _methodsUsed: [],   // 记录用到的测试设计方法
+    _riskNotes: [],     // 风险点提示
+    _suggestions: [],   // 建议补充项
 
     generate(mode) {
         const input = document.getElementById('tc-input').value.trim();
@@ -887,27 +892,39 @@ const tool_testcase = {
         const roles = tool_requirement._extractRoles(input);
         const constraints = this._extractConstraints(input);
         const fields = this._extractFields(input);
-
-        this._cases = [];
-        let caseId = 1;
-
         const operations = this._extractOperations(input, features);
 
+        this._cases = [];
+        this._methodsUsed = [];
+        this._riskNotes = [];
+        this._suggestions = [];
+        this._currentPage = 1;
+
         if (mode === 'all' || mode === 'positive') {
-            this._genPositiveCases(operations, fields, constraints, roles, keywords, caseId);
-            caseId = this._cases.length + 1;
-        }
-        if (mode === 'all' || mode === 'negative') {
-            this._genNegativeCases(operations, fields, constraints, roles, caseId);
-            caseId = this._cases.length + 1;
+            this._genFunctionalCases(input, operations, fields, constraints, roles, keywords);
         }
         if (mode === 'all' || mode === 'boundary') {
-            this._genBoundaryCases(operations, fields, constraints, roles, caseId);
+            this._genBoundaryTestCases(input, operations, fields, constraints, roles);
+        }
+        if (mode === 'all' || mode === 'negative') {
+            this._genExceptionCases(input, operations, fields, constraints, roles);
+        }
+        if (mode === 'all') {
+            this._genPerformanceCases(input, operations);
+            this._genSecurityCases(input, operations, roles, fields);
+            this._genCompatibilityCases(input);
+            this._genUsabilityCases(input, operations, fields);
         }
 
-        this._cases.forEach((c, i) => { c.id = 'TC-' + String(i + 1).padStart(3, '0'); });
+        // TP编号按维度分段
+        const counters = { '功能测试':0, '边界值':0, '异常处理':0, '性能':0, '安全':0, '兼容性':0, '易用性':0 };
+        const baseNum = { '功能测试':0, '边界值':100, '异常处理':200, '性能':300, '安全':350, '兼容性':400, '易用性':450 };
+        this._cases.forEach(c => {
+            counters[c.dimension] = (counters[c.dimension] || 0) + 1;
+            c.id = 'TP-' + String(baseNum[c.dimension] + counters[c.dimension]).padStart(3, '0');
+        });
 
-        document.getElementById('tc-status').textContent = '共生成 ' + this._cases.length + ' 条用例';
+        document.getElementById('tc-status').textContent = '共生成 ' + this._cases.length + ' 条测试点（7大维度）';
         document.getElementById('tc-status').className = 'toolbar-status success';
         this._render();
     },
@@ -972,170 +989,543 @@ const tool_testcase = {
         return ops;
     },
 
-    _genPositiveCases(operations, fields, constraints, roles, keywords, startId) {
-        let id = startId;
+    _addCase(dimension, description, priority, precondition, expected, method) {
         this._cases.push({
             id: '',
-            title: '正常流程验证',
-            type: '功能测试',
-            priority: 'P0',
-            precondition: '用户已登录系统，具备操作权限',
-            steps: operations.slice(0, 5).map((o, i) => (i + 1) + '. ' + o.description).join('\n'),
-            expected: '所有步骤按预期执行，系统状态正确更新，无报错',
-            category: '正向用例'
+            dimension: dimension,
+            description: description,
+            priority: priority,
+            precondition: precondition,
+            expected: expected,
+            method: method
         });
+        if (!this._methodsUsed.includes(method)) {
+            this._methodsUsed.push(method);
+        }
+    },
 
+    // --- 维度1：功能测试 ---
+    _genFunctionalCases(input, operations, fields, constraints, roles, keywords) {
+        // 核心正常流程
+        const flowDesc = operations.slice(0, 5).map(o => o.description).join('，');
+        const flowAction = operations.length > 0 ? operations[0].description : '核心业务流程';
+        this._addCase(
+            '功能测试',
+            '对' + flowAction + '执行正常流程操作，验证核心功能是否按预期执行',
+            'P0',
+            '用户已登录，具备操作权限，数据就绪',
+            '所有步骤按预期执行，系统状态正确更新，无报错',
+            '场景法'
+        );
+
+        // 各字段正常输入
         fields.slice(0, 5).forEach(f => {
-            this._cases.push({
-                id: '',
-                title: f + '正常输入验证',
-                type: '功能测试',
-                priority: 'P1',
-                precondition: '页面正常加载',
-                steps: '1. 在' + f + '输入框中输入合法值\n2. 提交或触发校验',
-                expected: f + '输入被正确接受，无错误提示',
-                category: '正向用例'
-            });
+            this._addCase(
+                '功能测试',
+                '对' + f + '字段输入合法值并提交，验证数据正确接收',
+                'P1',
+                '页面正常加载',
+                f + '输入被正确接受和存储，无错误提示',
+                '等价类划分'
+            );
         });
 
+        // CRUD 完整流程
+        const hasCRUD = operations.some(o => ['新增','添加','修改','编辑','删除'].includes(o.action));
+        if (hasCRUD) {
+            this._addCase(
+                '功能测试',
+                '对数据执行新增→修改→查询→删除完整生命周期操作，验证CRUD流程闭环',
+                'P0',
+                '用户已登录，具备数据操作权限',
+                '新增数据成功写入；修改后数据正确更新；查询返回正确结果；删除后数据被清理',
+                '场景法'
+            );
+        }
+
+        // 状态流转
+        if (/状态|审核|审批|提交|通过|驳回|发布|下架/.test(input)) {
+            this._addCase(
+                '功能测试',
+                '对数据执行状态流转（如提交→审核→通过/驳回），验证每个状态转换是否正确',
+                'P0',
+                '各状态对应的操作角色已就位',
+                '状态按业务规则正确流转，不允许的跳转被阻止',
+                '状态迁移法'
+            );
+            this._methodsUsed = this._methodsUsed.filter(m => m !== '状态迁移法');
+            this._methodsUsed.push('状态迁移法');
+        }
+
+        // 多角色权限
         if (roles.length > 1) {
             roles.forEach(role => {
-                this._cases.push({
-                    id: '',
-                    title: role + '权限验证',
-                    type: '功能测试',
-                    priority: 'P1',
-                    precondition: '以' + role + '身份登录',
-                    steps: '1. 执行需求中描述的操作\n2. 验证可见性和可操作性',
-                    expected: role + '仅能查看和操作权限范围内的内容',
-                    category: '正向用例'
-                });
+                this._addCase(
+                    '功能测试',
+                    '以' + role + '身份执行需求描述的操作，验证角色权限是否正确',
+                    'P1',
+                    '以' + role + '身份登录系统',
+                    role + '仅能查看和操作权限范围内的功能，越权操作被拦截',
+                    '场景法'
+                );
             });
+        } else if (roles.length === 1) {
+            this._addCase(
+                '功能测试',
+                '以' + roles[0] + '身份执行需求描述的操作，验证功能可正常使用',
+                'P1',
+                '以' + roles[0] + '身份登录系统',
+                '操作功能正常，结果符合预期',
+                '场景法'
+            );
+        }
+
+        // 搜索/列表
+        if (operations.some(o => ['搜索','查询','筛选'].includes(o.action))) {
+            this._addCase(
+                '功能测试',
+                '对列表执行关键字搜索/筛选操作，验证搜索结果正确性',
+                'P1',
+                '列表页面加载完成，存在多条数据',
+                '搜索结果与关键字匹配，排序/分页正确，无匹配时给出空状态提示',
+                '等价类划分'
+            );
+        }
+
+        // 分页
+        if (/分页|第\d+页|第.*页|翻页/.test(input) || operations.length > 5) {
+            this._addCase(
+                '功能测试',
+                '对列表执行翻页/切换每页条数操作，验证分页功能正确',
+                'P1',
+                '列表存在多页数据',
+                '翻页正确加载对应页数据；切换每页条数后重新分页；首页/末页/上下页按钮正常工作',
+                '边界值分析'
+            );
         }
     },
 
-    _genNegativeCases(operations, fields, constraints, roles, startId) {
-        fields.slice(0, 4).forEach(f => {
-            this._cases.push({
-                id: '',
-                title: f + '为空/不填验证',
-                type: '功能测试',
-                priority: 'P1',
-                precondition: '页面正常加载',
-                steps: '1. 不填写' + f + '\n2. 提交表单或触发操作',
-                expected: '系统提示"' + f + '不能为空"或类似友好提示，阻止提交',
-                category: '异常场景'
-            });
-        });
-
-        fields.slice(0, 4).forEach(f => {
-            let invalidValue = '无效输入数据';
-            if (f.includes('邮箱')) invalidValue = '非法邮箱格式(如 "abc"、"@.com")';
-            else if (f.includes('手机')) invalidValue = '非法手机号(如 "123"、"abcdefg")';
-            else if (f.includes('身份证')) invalidValue = '非法身份证号(如 "1234567890")';
-            else if (f.includes('密码')) invalidValue = '不符合密码规则的字符串';
-            else if (f.includes('金额')) invalidValue = '负数金额(如 "-100")';
-            else if (f.includes('数量')) invalidValue = '负数值(如 "-5")';
-
-            this._cases.push({
-                id: '',
-                title: f + '输入非法格式验证',
-                type: '功能测试',
-                priority: 'P2',
-                precondition: '页面正常加载',
-                steps: '1. 在' + f + '输入框中输入"' + invalidValue + '"\n2. 提交表单或触发操作',
-                expected: '系统提示"' + f + '格式不正确"或类似友好提示，数据不被提交',
-                category: '异常场景'
-            });
-        });
-
-        const actionOps = operations.filter(o => ['登录','注册','提交','支付','删除','修改','上传'].includes(o.action));
-        if (actionOps.length > 0) {
-            this._cases.push({
-                id: '',
-                title: '网络异常/超时处理验证',
-                type: '功能测试',
-                priority: 'P1',
-                precondition: '页面正常加载，模拟网络断开或超时',
-                steps: '1. 填写必要信息\n2. 点击提交/操作按钮时断开网络\n3. 观察系统表现',
-                expected: '系统显示网络异常提示，操作可重试，数据不丢失',
-                category: '异常场景'
-            });
-        }
-
-        if (roles.length > 0) {
-            this._cases.push({
-                id: '',
-                title: '无权限用户操作验证',
-                type: '功能测试',
-                priority: 'P1',
-                precondition: '以无权限的普通用户身份登录',
-                steps: '1. 尝试访问需要权限的功能\n2. 尝试直接调用接口',
-                expected: '系统阻止访问，显示权限不足提示或跳转到登录页',
-                category: '异常场景'
-            });
-        }
-    },
-
-    _genBoundaryCases(operations, fields, constraints, roles, startId) {
+    // --- 维度2：边界值测试 ---
+    _genBoundaryTestCases(input, operations, fields, constraints, roles) {
+        // 数值约束边界
         constraints.forEach(c => {
             if (c.type === 'number') {
                 const nums = c.raw.match(/\d+/g);
                 if (nums && nums.length >= 1) {
                     const val = parseInt(nums[0]);
-                    this._cases.push({
-                        id: '',
-                        title: '边界值测试：' + c.raw,
-                        type: '功能测试',
-                        priority: 'P1',
-                        precondition: '按需求描述进入对应页面',
-                        steps: '1. 输入临界值 ' + val + '\n2. 输入临界值 ' + (val - 1) + '（低于阈值）\n3. 输入临界值 ' + (val + 1) + '（高于阈值）',
-                        expected: '等于' + val + '时按需求规则处理，' + (val - 1) + '和' + (val + 1) + '按边界规则处理',
-                        category: '边界测试'
-                    });
+                    this._addCase(
+                        '边界值',
+                        '对数值约束"' + c.raw + '"输入等于边界值' + val + '，验证边界值处理正确',
+                        'P1',
+                        '页面正常加载',
+                        '值为' + val + '时按需求规则正确处理',
+                        '边界值分析'
+                    );
+                    this._addCase(
+                        '边界值',
+                        '对数值约束"' + c.raw + '"输入边界值-1即' + (val - 1) + '，验证越界处理',
+                        'P2',
+                        '页面正常加载',
+                        '值为' + (val - 1) + '时给出越界提示或按规则处理',
+                        '边界值分析'
+                    );
+                    this._addCase(
+                        '边界值',
+                        '对数值约束"' + c.raw + '"输入边界值+1即' + (val + 1) + '，验证越界处理',
+                        'P2',
+                        '页面正常加载',
+                        '值为' + (val + 1) + '时给出越界提示或按规则处理',
+                        '边界值分析'
+                    );
                 }
             }
         });
 
+        // 字段长度边界
         fields.slice(0, 4).forEach(f => {
-            this._cases.push({
-                id: '',
-                title: f + '长度边界测试',
-                type: '功能测试',
-                priority: 'P2',
-                precondition: '页面正常加载',
-                steps: '1. 输入1个字符（最小长度）\n2. 输入超长字符(如500个字符)\n3. 输入特殊字符(如<script>、表情符号等)',
-                expected: '最小长度正常接受；超长字符给出长度限制提示；特殊字符正确转义处理',
-                category: '边界测试'
-            });
-
-            this._cases.push({
-                id: '',
-                title: f + '特殊值验证',
-                type: '功能测试',
-                priority: 'P2',
-                precondition: '页面正常加载',
-                steps: "1. 输入空格/全空格\n2. 输入SQL注入字符(如 ' OR '1'='1)\n3. 输入XSS字符(如 <script>alert(1)</script>)",
-                expected: '空格按业务规则处理；注入字符正确转义，不触发安全漏洞',
-                category: '边界测试'
-            });
+            this._addCase(
+                '边界值',
+                '对' + f + '输入1个字符（最小长度），验证最小长度输入被接受',
+                'P2',
+                '页面正常加载',
+                '最小长度输入正常接受',
+                '边界值分析'
+            );
+            this._addCase(
+                '边界值',
+                '对' + f + '输入超长字符串（如500字符），验证长度限制提示',
+                'P2',
+                '页面正常加载',
+                '超长输入给出长度限制提示，数据不被提交',
+                '边界值分析'
+            );
+            this._addCase(
+                '边界值',
+                '对' + f + '输入纯空格/全角字符/emoji表情等特殊字符，验证处理正确',
+                'P2',
+                '页面正常加载',
+                '纯空格按业务规则处理；特殊字符正确显示或提示，不引发异常',
+                '边界值分析'
+            );
         });
 
-        const hasModify = operations.some(o => ['删除','修改','编辑'].includes(o.action));
-        if (hasModify) {
-            this._cases.push({
-                id: '',
-                title: '并发操作边界测试',
-                type: '功能测试',
-                priority: 'P1',
-                precondition: '两个用户同时登录',
-                steps: '1. 用户A和用户B同时对同一数据执行操作\n2. 观察数据处理结果',
-                expected: '数据一致性保持，后提交的操作得到合理反馈（成功或冲突提示）',
-                category: '边界测试'
-            });
+        // 分页边界
+        if (/分页|第\d+页/.test(input)) {
+            this._addCase(
+                '边界值',
+                '将每页条数设为0、负数、极大值，验证分页参数边界处理',
+                'P2',
+                '列表存在数据',
+                '非法参数被拦截或使用默认值，页面前端不崩溃',
+                '边界值分析'
+            );
+        }
+
+        // 集合容量边界
+        if (operations.some(o => ['新增','添加','上传','导入'].includes(o.action))) {
+            this._addCase(
+                '边界值',
+                '对列表添加数据直到达到最大容量，验证容量上限处理',
+                'P1',
+                '列表接近容量上限',
+                '达到上限时给出提示，阻止继续添加',
+                '边界值分析'
+            );
         }
     },
 
+    // --- 维度3：异常处理测试 ---
+    _genExceptionCases(input, operations, fields, constraints, roles) {
+        // 必填字段为空
+        fields.slice(0, 4).forEach(f => {
+            this._addCase(
+                '异常处理',
+                '对' + f + '字段不填写直接提交，验证必填校验提示',
+                'P1',
+                '页面正常加载',
+                '系统提示"' + f + '不能为空"，阻止表单提交，已填数据保留',
+                '错误推测法'
+            );
+        });
+
+        // 字段非法格式
+        fields.slice(0, 4).forEach(f => {
+            let invalidValue = '无效输入数据';
+            if (f.includes('邮箱')) invalidValue = '不含@符号的字符串';
+            else if (f.includes('手机')) invalidValue = '不足11位的数字串';
+            else if (f.includes('身份证')) invalidValue = '位数不符的字符串';
+            else if (f.includes('密码')) invalidValue = '不符合密码规则的字符串';
+            else if (f.includes('金额')) invalidValue = '负数或非数字字符';
+            else if (f.includes('数量')) invalidValue = '负值或小数';
+
+            this._addCase(
+                '异常处理',
+                '对' + f + '输入"' + invalidValue + '"非法格式，验证格式校验',
+                'P1',
+                '页面正常加载',
+                '系统提示格式错误信息，数据不被提交',
+                '错误推测法'
+            );
+        });
+
+        // 网络异常
+        const actionOps = operations.filter(o => ['登录','注册','提交','支付','删除','修改','上传','保存'].includes(o.action));
+        if (actionOps.length > 0) {
+            this._addCase(
+                '异常处理',
+                '在提交操作过程中断开网络，验证网络异常处理和重试机制',
+                'P1',
+                '页面正常加载，已填写必要信息',
+                '系统显示网络异常提示，操作可重试，已填数据不丢失',
+                '错误推测法'
+            );
+            this._addCase(
+                '异常处理',
+                '在提交操作过程中模拟服务端返回500错误，验证错误响应处理',
+                'P1',
+                '页面正常加载，服务端模拟返回500',
+                '系统显示友好的错误提示，不暴露技术细节',
+                '错误推测法'
+            );
+        }
+
+        // 并发冲突
+        const hasModify = operations.some(o => ['删除','修改','编辑'].includes(o.action));
+        if (hasModify) {
+            this._addCase(
+                '异常处理',
+                '两个用户同时对同一数据执行修改操作，验证并发冲突处理',
+                'P1',
+                '两个用户同时登录，操作同一数据',
+                '后提交的操作获得冲突提示，数据一致性保持',
+                '错误推测法'
+            );
+        }
+
+        // 权限拦截
+        if (roles.length > 0) {
+            this._addCase(
+                '异常处理',
+                '以无权限用户身份尝试操作他人数据或越权功能，验证权限控制',
+                'P1',
+                '以低权限用户身份登录',
+                '系统阻止越权操作，显示权限不足提示',
+                '错误推测法'
+            );
+        }
+
+        // Token/会话过期
+        if (operations.some(o => ['登录','提交','保存','支付'].includes(o.action))) {
+            this._addCase(
+                '异常处理',
+                '在操作中途登录会话过期，验证过期拦截和重新登录流程',
+                'P2',
+                '用户已登录，手动等待或模拟token过期',
+                '操作被拦截，跳转登录页或提示重新登录，已填数据尽量保留',
+                '错误推测法'
+            );
+        }
+
+        // 重复提交
+        if (operations.some(o => ['提交','支付','注册'].includes(o.action))) {
+            this._addCase(
+                '异常处理',
+                '对提交按钮快速双击或连续点击，验证防重复提交机制',
+                'P1',
+                '页面正常加载，表单填写完毕',
+                '同一请求仅提交一次，重复点击被忽略或提示"请勿重复提交"',
+                '错误推测法'
+            );
+        }
+    },
+
+    // --- 维度4：性能测试 ---
+    _genPerformanceCases(input, operations) {
+        if (operations.some(o => ['搜索','查询','筛选'].includes(o.action))) {
+            this._addCase(
+                '性能',
+                '在数据量较大（1万+条）情况下执行搜索操作，验证搜索响应时间',
+                'P3',
+                '数据库中存在大量测试数据',
+                '搜索响应时间在合理范围内（<3秒），不影响系统可用性',
+                '负载测试'
+            );
+        }
+
+        if (operations.some(o => ['登录','提交','支付','注册'].includes(o.action))) {
+            this._addCase(
+                '性能',
+                '对核心操作执行高并发请求（如100并发），验证系统并发处理能力',
+                'P3',
+                '准备并发测试工具',
+                '无请求丢失，响应时间无明显波动，无服务崩溃',
+                '负载测试'
+            );
+        }
+
+        if (operations.some(o => ['上传','下载','导入','导出'].includes(o.action))) {
+            this._addCase(
+                '性能',
+                '对大文件执行上传/下载操作，验证大文件处理性能',
+                'P3',
+                '准备大文件测试数据',
+                '操作在合理时间内完成，不阻塞其他操作',
+                '负载测试'
+            );
+        }
+
+        // 通用：页面加载性能
+        this._addCase(
+            '性能',
+            '对需求涉及的页面执行首次加载，验证页面首屏渲染时间',
+            'P3',
+            '清除缓存后访问页面',
+            '首屏渲染时间在可接受范围内，无长时间白屏',
+            '负载测试'
+        );
+
+        if (operations.some(o => ['分页','翻页'].includes(o.action)) || /列表/.test(input)) {
+            this._addCase(
+                '性能',
+                '对含大量数据的列表执行快速翻页操作，验证列表渲染性能',
+                'P3',
+                '列表包含大量数据',
+                '翻页流畅，无卡顿，页面渲染正常',
+                '负载测试'
+            );
+        }
+    },
+
+    // --- 维度5：安全测试 ---
+    _genSecurityCases(input, operations, roles, fields) {
+        // SQL注入
+        this._addCase(
+            '安全',
+            '对输入字段提交SQL注入字符（如\'; DROP TABLE--），验证防注入能力',
+            'P3',
+            '页面正常加载',
+            '注入字符被正确转义或过滤，不影响数据库',
+            '渗透测试'
+        );
+
+        // XSS
+        this._addCase(
+            '安全',
+            '对输入字段提交XSS攻击脚本（如<script>alert(1)</script>），验证防XSS能力',
+            'P3',
+            '页面正常加载',
+            '脚本被转义显示为文本，不被浏览器执行',
+            '渗透测试'
+        );
+
+        // 敏感信息泄露
+        this._addCase(
+            '安全',
+            '检查接口响应和页面源码，验证不暴露敏感信息（密码、Token、密钥等）',
+            'P3',
+            '发起请求并查看响应',
+            '敏感信息不在响应明文或页面源码中出现',
+            '渗透测试'
+        );
+
+        // 权限绕过
+        if (roles.length > 0) {
+            this._addCase(
+                '安全',
+                '尝试直接调用API接口绕过前端权限校验，验证后端权限验证',
+                'P3',
+                '获取API接口信息，使用低权限token',
+                '后端验证权限，返回403或权限不足响应',
+                '渗透测试'
+            );
+        }
+
+        // 密码安全
+        if (fields.includes('密码')) {
+            this._addCase(
+                '安全',
+                '检查密码传输是否加密（HTTPS）和存储是否使用安全哈希，验证密码安全',
+                'P3',
+                '抓包或检查数据库',
+                '传输无明文密码；数据库存储为加密哈希值',
+                '渗透测试'
+            );
+        }
+    },
+
+    // --- 维度6：兼容性测试 ---
+    _genCompatibilityCases(input) {
+        this._addCase(
+            '兼容性',
+            '在Chrome浏览器最新版中执行需求描述的操作，验证Chrome兼容性',
+            'P3',
+            '安装Chrome浏览器最新版',
+            '功能正常使用，布局正常，无显示错乱',
+            '配置测试'
+        );
+
+        this._addCase(
+            '兼容性',
+            '在Safari浏览器中执行需求描述的操作，验证Safari兼容性',
+            'P3',
+            '安装Safari浏览器',
+            '功能正常使用，样式无明显差异',
+            '配置测试'
+        );
+
+        if (/移动|手机|H5|小程序|APP/.test(input)) {
+            this._addCase(
+                '兼容性',
+                '在iOS/Android移动端浏览器中执行操作，验证移动端兼容性',
+                'P3',
+                '使用真机或模拟器',
+                '移动端功能正常，交互适配触屏操作',
+                '配置测试'
+            );
+        }
+
+        this._addCase(
+            '兼容性',
+            '在不同分辨率（1920x1080、1366x768、375x812移动端）下查看页面，验证响应式布局',
+            'P3',
+            '调整浏览器窗口或使用开发者工具',
+            '页面在各分辨率下显示正常，无明显布局错乱或内容截断',
+            '配置测试'
+        );
+    },
+
+    // --- 维度7：易用性测试 ---
+    _genUsabilityCases(input, operations, fields) {
+        // 提示信息
+        this._addCase(
+            '易用性',
+            '检查表单各字段是否有清晰的placeholder/标签说明，验证输入引导是否完善',
+            'P3',
+            '打开包含表单的页面',
+            '每个输入框有清晰的提示文字或标签，用户理解该输入什么',
+            '用户场景法'
+        );
+
+        // 错误提示友好性
+        if (fields.length > 0) {
+            this._addCase(
+                '易用性',
+                '提交含有错误信息的表单，验证错误提示是否友好（指出具体错误、位置、修改建议）',
+                'P3',
+                '表单中填写错误数据',
+                '错误信息明确指出哪里错了、为什么错、怎么改，不是"操作失败"的笼统提示',
+                '用户场景法'
+            );
+        }
+
+        // 操作反馈
+        if (operations.some(o => ['提交','保存','删除','支付','上传'].includes(o.action))) {
+            this._addCase(
+                '易用性',
+                '执行耗时操作（提交/上传），验证是否有加载中状态和完成反馈',
+                'P3',
+                '触发耗时操作',
+                '操作过程中显示加载状态（loading/进度条），操作完成后给出明确成功/失败反馈',
+                '用户场景法'
+            );
+        }
+
+        // 操作确认
+        if (operations.some(o => ['删除','清空','支付'].includes(o.action))) {
+            this._addCase(
+                '易用性',
+                '执行高风险操作（删除/支付），验证是否有二次确认机制',
+                'P3',
+                '触发高风险操作',
+                '弹出确认对话框，用户确认后才执行，避免误操作',
+                '用户场景法'
+            );
+        }
+
+        // 数据持久化
+        if (fields.length > 0) {
+            this._addCase(
+                '易用性',
+                '填写表单后刷新页面或意外关闭，验证已填数据是否保留',
+                'P3',
+                '表单填写一半，刷新页面',
+                '已填数据尽量保留或给出未保存提示，避免用户重新填写',
+                '用户场景法'
+            );
+        }
+
+        // 键盘操作
+        this._addCase(
+            '易用性',
+            '使用Tab键切换输入焦点、Enter键提交表单，验证键盘操作支持',
+            'P3',
+            '打开表单页面',
+            'Tab键按逻辑顺序切换焦点；Enter键能触发提交操作',
+            '用户场景法'
+        );
+    },
+
+    // --- 渲染输出 ---
     _render() {
         const container = document.getElementById('tc-output');
         if (this._cases.length === 0) {
@@ -1143,59 +1533,142 @@ const tool_testcase = {
             return;
         }
 
-        const stats = {};
-        this._cases.forEach(c => {
-            stats[c.category] = (stats[c.category] || 0) + 1;
-        });
+        // 分页计算
+        const totalPages = Math.ceil(this._cases.length / this._pageSize);
+        if (this._currentPage > totalPages) this._currentPage = totalPages;
+        if (this._currentPage < 1) this._currentPage = 1;
+        const startIdx = (this._currentPage - 1) * this._pageSize;
+        const pageCases = this._cases.slice(startIdx, startIdx + this._pageSize);
+
+        // 维度统计
+        const dimStats = {
+            '功能测试': 0, '边界值': 0, '异常处理': 0,
+            '性能': 0, '安全': 0, '兼容性': 0, '易用性': 0
+        };
+        this._cases.forEach(c => { dimStats[c.dimension] = (dimStats[c.dimension] || 0) + 1; });
+
+        const dimColors = {
+            '功能测试': 'var(--primary)', '边界值': 'var(--warning)',
+            '异常处理': 'var(--danger)', '性能': '#8b5cf6',
+            '安全': '#ef4444', '兼容性': '#06b6d4', '易用性': 'var(--success)'
+        };
 
         let html = '<div class="tc-summary-bar">';
-        Object.entries(stats).forEach(([cat, count]) => {
-            const color = cat === '正向用例' ? 'var(--success)' : cat === '异常场景' ? 'var(--danger)' : 'var(--warning)';
-            html += '<span class="tc-stat-badge" style="border-left:3px solid ' + color + '">' + cat + ': ' + count + '条</span>';
+        Object.entries(dimStats).filter(([,c]) => c > 0).forEach(([dim, count]) => {
+            html += '<span class="tc-stat-badge" style="border-left:3px solid ' + dimColors[dim] + '">' + dim + ': ' + count + '条</span>';
         });
         html += '</div>';
 
+        // 测试点表格
         html += '<div class="tc-table-wrap"><table class="tc-table"><thead><tr>';
-        html += '<th class="tc-col-id">用例ID</th>';
-        html += '<th class="tc-col-title">用例标题</th>';
-        html += '<th class="tc-col-type">类别</th>';
+        html += '<th class="tc-col-id">编号</th>';
+        html += '<th class="tc-col-dim">维度</th>';
+        html += '<th class="tc-col-desc">测试点描述</th>';
         html += '<th class="tc-col-pri">优先级</th>';
         html += '<th class="tc-col-pre">前置条件</th>';
-        html += '<th class="tc-col-steps">测试步骤</th>';
         html += '<th class="tc-col-expect">预期结果</th>';
+        html += '<th class="tc-col-method">方法</th>';
         html += '</tr></thead><tbody>';
 
-        this._cases.forEach(c => {
-            const catColor = c.category === '正向用例' ? 'tc-cat-positive' : c.category === '异常场景' ? 'tc-cat-negative' : 'tc-cat-boundary';
-            const priColor = c.priority === 'P0' ? 'tc-pri-p0' : c.priority === 'P1' ? 'tc-pri-p1' : 'tc-pri-p2';
+        pageCases.forEach(c => {
+            const dimColor = c.dimension === '功能测试' ? 'tc-dim-func' :
+                             c.dimension === '边界值' ? 'tc-dim-bound' :
+                             c.dimension === '异常处理' ? 'tc-dim-except' :
+                             c.dimension === '性能' ? 'tc-dim-perf' :
+                             c.dimension === '安全' ? 'tc-dim-sec' :
+                             c.dimension === '兼容性' ? 'tc-dim-compat' : 'tc-dim-ux';
+            const priColor = c.priority === 'P0' ? 'tc-pri-p0' : c.priority === 'P1' ? 'tc-pri-p1' : c.priority === 'P2' ? 'tc-pri-p2' : 'tc-pri-p3';
             html += '<tr>';
             html += '<td class="tc-col-id">' + c.id + '</td>';
-            html += '<td class="tc-col-title">' + c.title + '</td>';
-            html += '<td class="tc-col-type"><span class="tc-cat ' + catColor + '">' + c.category + '</span></td>';
+            html += '<td class="tc-col-dim"><span class="tc-dim ' + dimColor + '">' + c.dimension + '</span></td>';
+            html += '<td class="tc-col-desc">' + this._escapeHtml(c.description) + '</td>';
             html += '<td class="tc-col-pri"><span class="tc-pri ' + priColor + '">' + c.priority + '</span></td>';
-            html += '<td class="tc-col-pre">' + c.precondition + '</td>';
-            html += '<td class="tc-col-steps">' + c.steps.replace(/\n/g, '<br>') + '</td>';
-            html += '<td class="tc-col-expect">' + c.expected + '</td>';
+            html += '<td class="tc-col-pre">' + this._escapeHtml(c.precondition) + '</td>';
+            html += '<td class="tc-col-expect">' + this._escapeHtml(c.expected) + '</td>';
+            html += '<td class="tc-col-method">' + c.method + '</td>';
             html += '</tr>';
         });
 
         html += '</tbody></table></div>';
+
+        // 分页控件
+        if (totalPages > 1) {
+            html += '<div class="tp-pagination">';
+            html += '<span class="tp-pg-info">共 ' + this._cases.length + ' 条，第 ' + this._currentPage + '/' + totalPages + ' 页</span>';
+            html += '<div class="tp-pg-btns">';
+            html += '<button class="tp-pg-btn" onclick="tool_testcase._goToPage(1)" ' + (this._currentPage === 1 ? 'disabled' : '') + ' title="首页">&laquo;</button>';
+            html += '<button class="tp-pg-btn" onclick="tool_testcase._goToPage(' + (this._currentPage - 1) + ')" ' + (this._currentPage === 1 ? 'disabled' : '') + ' title="上一页">&lsaquo;</button>';
+
+            const maxVisible = 5;
+            let pgStart = Math.max(1, this._currentPage - Math.floor(maxVisible / 2));
+            let pgEnd = Math.min(totalPages, pgStart + maxVisible - 1);
+            if (pgEnd - pgStart < maxVisible - 1) {
+                pgStart = Math.max(1, pgEnd - maxVisible + 1);
+            }
+            for (let p = pgStart; p <= pgEnd; p++) {
+                html += '<button class="tp-pg-btn tp-pg-num' + (p === this._currentPage ? ' active' : '') + '" onclick="tool_testcase._goToPage(' + p + ')">' + p + '</button>';
+            }
+
+            html += '<button class="tp-pg-btn" onclick="tool_testcase._goToPage(' + (this._currentPage + 1) + ')" ' + (this._currentPage === totalPages ? 'disabled' : '') + ' title="下一页">&rsaquo;</button>';
+            html += '<button class="tp-pg-btn" onclick="tool_testcase._goToPage(' + totalPages + ')" ' + (this._currentPage === totalPages ? 'disabled' : '') + ' title="末页">&raquo;</button>';
+            html += '</div>';
+            html += '<select class="tp-pg-size" onchange="tool_testcase._changePageSize(this.value)">';
+            [50, 110, 200, 500].forEach(s => {
+                html += '<option value="' + s + '"' + (this._pageSize === s ? ' selected' : '') + '>每页 ' + s + ' 条</option>';
+            });
+            html += '</select>';
+            html += '</div>';
+        }
+
+        // 测试设计方法说明
+        if (this._methodsUsed.length > 0) {
+            html += '<div class="tc-design-note"><b>测试设计方法：</b>' + this._methodsUsed.join('、') + '</div>';
+        }
+
+        // 风险点提示
+        if (this._riskNotes.length > 0) {
+            html += '<div class="tc-risk-note"><b>⚠️ 风险点提示：</b><ul>';
+            this._riskNotes.forEach(r => { html += '<li>' + r + '</li>'; });
+            html += '</ul></div>';
+        }
+
+        // 建议补充项
+        html += '<div class="tc-suggest-note"><b>💡 建议补充：</b>以上测试点基于需求文本自动生成，建议根据实际业务补充以下内容：';
+        html += '详细的业务规则确认、真实测试数据的准备、上下游依赖系统的联调验证、生产环境配置差异验证。如需求中包含性能指标（如响应时间<200ms），性能测试优先级可提升至P0。</div>';
+
         container.innerHTML = html;
     },
 
+    _escapeHtml(str) {
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    },
+
+    _goToPage(page) {
+        this._currentPage = page;
+        this._render();
+    },
+
+    _changePageSize(size) {
+        this._pageSize = parseInt(size);
+        this._currentPage = 1;
+        this._render();
+    },
+
     exportCSV() {
-        if (this._cases.length === 0) { showToast('请先生成测试用例'); return; }
-        const header = ['用例ID', '用例标题', '测试类型', '类别', '优先级', '前置条件', '测试步骤', '预期结果'];
+        if (this._cases.length === 0) { showToast('请先生成测试点'); return; }
+        const header = ['编号', '测试维度', '测试点描述', '优先级', '前置条件', '预期结果', '测试方法'];
         const rows = this._cases.map(c => [
-            c.id, c.title, c.type, c.category, c.priority,
-            c.precondition, c.steps.replace(/\n/g, ' | '), c.expected
+            c.id, c.dimension, c.description, c.priority,
+            c.precondition, c.expected, c.method
         ]);
         const csvContent = '\uFEFF' + header.join(',') + '\n' + rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = '测试用例_' + new Date().toISOString().slice(0, 10) + '.csv';
+        a.download = '测试点_' + new Date().toISOString().slice(0, 10) + '.csv';
         a.click();
         URL.revokeObjectURL(url);
         showToast('CSV 文件已下载');
@@ -1206,6 +1679,10 @@ const tool_testcase = {
         document.getElementById('tc-output').innerHTML = '<div class="tc-placeholder">点击上方按钮生成测试用例</div>';
         document.getElementById('tc-status').textContent = '';
         this._cases = [];
+        this._currentPage = 1;
+        this._methodsUsed = [];
+        this._riskNotes = [];
+        this._suggestions = [];
     }
 };
 
