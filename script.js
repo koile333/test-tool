@@ -1211,14 +1211,23 @@ const tool_testcase = {
 
 // ===== 工具：生成 Postman 测试脚本 =====
 const tool_postman = {
-    _collection: null,
     _apis: [],
+    _mode: null,
+    _pageSize: 110,
+    _pageStates: {},
+    _expandedApis: new Set(),
 
-    generate() {
+    generate(mode) {
         const input = document.getElementById('pm-input').value.trim();
         if (!input) { showToast('请先输入接口文档'); return; }
 
+        if (!mode || !['cases', 'scripts'].includes(mode)) {
+            showToast('请选择生成模式：接口测试用例 或 Postman脚本'); return;
+        }
+        this._mode = mode;
         this._apis = [];
+        this._pageStates = {};
+        this._expandedApis = new Set();
 
         // 尝试解析 OpenAPI/Swagger JSON
         try {
@@ -1239,7 +1248,8 @@ const tool_postman = {
             return;
         }
 
-        document.getElementById('pm-status').textContent = '共解析 ' + this._apis.length + ' 个接口';
+        const modeLabels = { cases: '测试用例', scripts: '脚本' };
+        document.getElementById('pm-status').textContent = '共解析 ' + this._apis.length + ' 个接口（' + modeLabels[this._mode] + '）';
         document.getElementById('pm-status').className = 'toolbar-status success';
         this._render();
     },
@@ -1282,11 +1292,18 @@ const tool_postman = {
                     const jsonContent = content['application/json'];
                     if (jsonContent && jsonContent.schema) {
                         api.body = this._schemaToSample(jsonContent.schema);
+                        api._bodySchema = jsonContent.schema;
+                        api._bodyRequired = detail.requestBody.required;
                     }
                 }
 
                 // 响应
                 const responses = detail.responses || {};
+                api._responseCodes = Object.keys(responses);
+                api._responseDescs = {};
+                Object.entries(responses).forEach(([code, r]) => {
+                    api._responseDescs[code] = r.description || '';
+                });
                 const successKey = Object.keys(responses).find(k => k.startsWith('2')) || Object.keys(responses)[0];
                 if (successKey && responses[successKey]) {
                     api.responseStatus = parseInt(successKey) || 200;
@@ -1641,12 +1658,191 @@ const tool_postman = {
         return script;
     },
 
+    // ===== 规则引擎：根据 OpenAPI Schema 生成结构化测试点 =====
+    _genTestPoints(api) {
+        const points = [];
+        const schema = api._bodySchema;
+        const props = schema ? (schema.properties || {}) : {};
+        const required = schema ? (schema.required || []) : [];
+        const allKeys = Object.keys(props);
+        const hasBody = !!schema;
+        const hasWriteMethod = ['POST','PUT','PATCH'].includes(api.method);
+        const hasPathVars = /\{(\w+)\}/.test(api.path);
+
+        let id = 0;
+        const nextId = () => { id++; return 'TP-' + String(id).padStart(3, '0'); };
+        const add = (dim, desc, pri, pre, exp, method) => {
+            points.push({ id: nextId(), dimension: dim, description: desc, priority: pri, precondition: pre || '无', expected: exp, method: method || '-' });
+        };
+
+        // ---------- 1. 功能测试 (P0-P1) ----------
+        if (hasWriteMethod && hasBody) {
+            // 合法请求（全必填字段）
+            const reqFields = required.length > 0 ? required.join(' + ') + '（必填）' : '合法字段';
+            add('功能测试', '请求体包含合法' + reqFields + '，验证返回成功', 'P0', '', 'HTTP ' + api.responseStatus + '，返回正确的响应数据', '场景法');
+
+            // 每个必填字段缺失
+            required.forEach(f => {
+                add('功能测试', '请求体缺少必填字段【' + f + '】，验证接口校验', 'P0', '', 'HTTP 400 或错误码，提示' + f + '为必填字段', '等价类划分法');
+            });
+
+            // 全部必填字段缺失
+            if (required.length >= 2) {
+                add('功能测试', '请求体缺少全部必填字段（' + required.join('/') + '），验证接口逐一校验', 'P1', '', 'HTTP 400，错误信息指出全部缺失的必填字段', '正交实验法');
+            }
+
+            // 空请求体
+            if (api._bodyRequired) {
+                add('功能测试', '请求体为空对象 {}，验证接口处理', 'P1', '', 'HTTP 400，提示请求体不能为空', '错误推测法');
+            }
+
+            // 选填字段校验
+            const optionalFields = allKeys.filter(k => !required.includes(k));
+            if (optionalFields.length > 0) {
+                add('功能测试', '只填必填字段（' + (required.length > 0 ? required.join('/') : '无') + '），不填选填字段，验证接口正常处理', 'P1', '', 'HTTP ' + api.responseStatus + '，选填字段允许为空', '等价类划分法');
+            }
+        } else if (api.method === 'GET') {
+            add('功能测试', '发送GET请求获取资源列表/详情，验证返回正确数据', 'P0', '', 'HTTP 200，返回数据结构与文档一致', '场景法');
+            if (api.queryParams.length > 0) {
+                const reqQs = api.queryParams.filter(q => q.required);
+                if (reqQs.length > 0) {
+                    reqQs.forEach(q => {
+                        add('功能测试', '不传必填Query参数【' + q.key + '】，验证接口返回错误', 'P0', '', 'HTTP 400 或错误码', '等价类划分法');
+                    });
+                }
+            }
+        }
+
+        // 路径参数测试
+        if (hasPathVars) {
+            add('功能测试', '传入有效路径参数值，验证接口正常返回', 'P0', '', 'HTTP ' + api.responseStatus + '，返回对应资源数据', '场景法');
+            add('功能测试', '传入不存在的路径参数值（如id=999999），验证404处理', 'P1', '', 'HTTP 404 或相应错误码，提示资源不存在', '错误推测法');
+        }
+
+        // ---------- 2. 边界值测试 (P2) ----------
+        if (hasWriteMethod && hasBody) {
+            allKeys.forEach(fieldName => {
+                const prop = props[fieldName];
+                const isRequired = required.includes(fieldName);
+                const priority = isRequired ? 'P1' : 'P2';
+
+                if (prop.type === 'string') {
+                    add('边界值', '字段【' + fieldName + '】传入空字符串 ""', priority, '', '根据业务规则：拒绝并返回400，或接受', '边界值分析法');
+                    add('边界值', '字段【' + fieldName + '】传入超长字符串（10000字符）', 'P2', '', '不崩溃，根据业务规则返回400或成功', '边界值分析法');
+                    add('边界值', '字段【' + fieldName + '】传入单字符', 'P2', '', '根据业务规则正常处理或拒绝', '边界值分析法');
+                    if (prop.format === 'email') {
+                        add('边界值', '字段【' + fieldName + '】传入不含@的字符串，验证邮箱格式校验', priority, '', '返回400，提示邮箱格式错误', '边界值分析法');
+                        add('边界值', '字段【' + fieldName + '】传入含特殊字符的邮箱', 'P2', '', '根据业务规则：拒绝或接受', '边界值分析法');
+                    }
+                    if (prop.maxLength) {
+                        add('边界值', '字段【' + fieldName + '】传入 maxLength+1 长度字符串', 'P2', '', '返回400，提示超过最大长度限制（' + prop.maxLength + '）', '边界值分析法');
+                    }
+                    if (prop.minLength) {
+                        add('边界值', '字段【' + fieldName + '】传入 minLength-1 长度字符串', 'P2', '', '返回400，提示低于最小长度限制（' + prop.minLength + '）', '边界值分析法');
+                    }
+                } else if (prop.type === 'number' || prop.type === 'integer') {
+                    add('边界值', '字段【' + fieldName + '】传入 0', priority, '', '根据业务规则：接受或返回400', '边界值分析法');
+                    add('边界值', '字段【' + fieldName + '】传入负数 -1', priority, '', '根据业务规则：接受或返回400', '边界值分析法');
+                    add('边界值', '字段【' + fieldName + '】传入极大值 999999999', 'P2', '', '不崩溃，根据业务规则返回200或400', '边界值分析法');
+                    if (prop.type === 'integer') {
+                        add('边界值', '字段【' + fieldName + '】传入浮点数（如1.5），验证类型处理', 'P2', '', '根据业务规则：取整处理或返回400', '边界值分析法');
+                    }
+                    if (prop.minimum !== undefined) {
+                        add('边界值', '字段【' + fieldName + '】传入 minimum-1 的值', 'P2', '', '返回400，提示取值不能低于' + prop.minimum, '边界值分析法');
+                    }
+                    if (prop.maximum !== undefined) {
+                        add('边界值', '字段【' + fieldName + '】传入 maximum+1 的值', 'P2', '', '返回400，提示取值不能超过' + prop.maximum, '边界值分析法');
+                    }
+                } else if (prop.type === 'boolean') {
+                    add('边界值', '字段【' + fieldName + '】传入字符串"true"替代boolean类型', 'P2', '', '根据业务规则：类型转换或返回400', '边界值分析法');
+                }
+            });
+        }
+
+        // Query 参数边界值（GET 请求）
+        if (api.method === 'GET' && api.queryParams.length > 0) {
+            api.queryParams.forEach(q => {
+                add('边界值', 'Query参数【' + q.key + '】传入超大页码（如page=99999）', 'P2', '', 'HTTP 200，返回空列表，不崩溃', '边界值分析法');
+            });
+        }
+
+        // ---------- 3. 异常处理 (P1-P2) ----------
+        if (hasWriteMethod && hasBody) {
+            add('异常处理', '请求体传入非法JSON（如缺少闭合括号），验证容错能力', 'P1', '', 'HTTP 400，提示请求体格式错误', '错误推测法');
+            add('异常处理', 'Content-Type 设置为 text/plain，请求体为JSON，验证接口处理', 'P1', '', 'HTTP 400 或 415 Unsupported Media Type', '错误推测法');
+            add('异常处理', '请求体不传 Content-Type 头', 'P1', '', 'HTTP 400 或 415，提示缺少 Content-Type', '错误推测法');
+
+            // 未知字段
+            if (allKeys.length > 0) {
+                add('异常处理', '请求体额外传入未知字段 extraField: "test"', 'P2', '', '不报错，忽略未知字段；或返回400提示未知字段', '错误推测法');
+            }
+
+            // 类型错误
+            allKeys.forEach(fieldName => {
+                const prop = props[fieldName];
+                if (prop.type === 'string') {
+                    if (prop.enum) {
+                        add('异常处理', '字段【' + fieldName + '】传入不在enum中的值（如"invalid_enum_value"）', 'P1', '', 'HTTP 400，提示值必须在枚举范围内', '错误推测法');
+                    } else {
+                        add('异常处理', '字段【' + fieldName + '】传入数字类型替代字符串类型', 'P2', '', '根据业务：类型转换或返回400', '错误推测法');
+                    }
+                } else if (prop.type === 'number' || prop.type === 'integer') {
+                    add('异常处理', '字段【' + fieldName + '】传入字符串替代数字类型（如"abc"）', 'P1', '', 'HTTP 400，提示' + fieldName + '应为数字类型', '错误推测法');
+                }
+            });
+
+            if (api._bodyRequired) {
+                add('异常处理', '请求体传入 null', 'P2', '', 'HTTP 400，提示请求体不能为空', '错误推测法');
+            }
+        }
+
+        // 超时/网络
+        add('异常处理', '模拟网络超时场景，设置极短超时时间（如100ms），验证客户端处理', 'P2', '模拟网络慢', '客户端收到超时错误，不会无限等待', '错误推测法');
+
+        // ---------- 4. 安全测试 (P3) ----------
+        if (hasWriteMethod && hasBody) {
+            allKeys.forEach(fieldName => {
+                const prop = props[fieldName];
+                if (prop.type === 'string') {
+                    add('安全测试', '字段【' + fieldName + '】注入SQL语句（如"DROP TABLE users;--"），验证防注入', 'P3', '', '不执行注入操作，正常创建或返回400', '错误推测法');
+                    add('安全测试', '字段【' + fieldName + '】注入XSS脚本（<script>alert(1)</script>），验证输出转义', 'P3', '', '脚本被转义存储/输出，不会被浏览器执行', '错误推测法');
+                }
+            });
+        }
+        add('安全测试', '验证接口使用HTTPS加密传输（若baseUrl为http则视环境决定是否拦截）', 'P3', '', '生产环境强制HTTPS', '场景法');
+
+        // ---------- 5. 性能测试 (P3) ----------
+        add('性能测试', '单次请求，验证响应时间可接受', 'P3', '', '响应时间 < 2000ms（根据实际业务调整）', '基准测试');
+        add('性能测试', '连续发送10次相同请求，验证接口稳定性和响应时间波动', 'P3', '', '无500错误，响应时间无显著递增', '压力测试');
+        add('性能测试', '并发发送5个请求，验证接口并发处理能力', 'P3', '', '所有请求正常返回，无死锁或雪崩', '并发测试');
+
+        // ---------- 6. 兼容性测试 (P3) ----------
+        add('兼容性测试', '使用不同HTTP客户端（fetch/axios/curl）发送相同请求，验证结果一致性', 'P3', '', '各客户端返回结果一致（状态码、响应体结构）', '对比测试');
+        add('兼容性测试', '验证接口在不同Content-Type投递方式下的表现', 'P3', '', '按文档约定的Content-Type正常处理', '对比测试');
+
+        // ---------- 7. 易用性测试 (P3) ----------
+        if (hasWriteMethod && hasBody && required.length > 0) {
+            add('易用性测试', '缺少必填字段时，验证错误信息是否能明确指出缺失的字段名', 'P3', '', '错误信息具体清晰，如"title为必填字段"', '启发式评估');
+        }
+        add('易用性测试', '成功响应中是否包含完整的创建/查询数据，便于前端直接使用', 'P3', '', '响应JSON结构完整，含必要字段（如id、创建时间等）', '启发式评估');
+        if (hasWriteMethod && hasBody) {
+            add('易用性测试', '验证接口错误响应的格式是否统一（code/message/error等规范结构）', 'P3', '', '错误响应有统一的JSON结构', '启发式评估');
+        }
+
+        // 统计各维度测试点数量，附加到API
+        api._testPoints = points;
+        return points;
+    },
+
     _render() {
         const container = document.getElementById('pm-output');
         if (this._apis.length === 0) {
-            container.innerHTML = '<div class="pm-placeholder">粘贴接口文档后点击「生成脚本」</div>';
+            container.innerHTML = '<div class="pm-placeholder">粘贴接口文档后点击「生成接口测试用例」或「生成Postman脚本」</div>';
             return;
         }
+
+        const showCases = this._mode === 'cases';
+        const showScripts = this._mode === 'scripts';
 
         // 统计
         const methodCounts = {};
@@ -1658,6 +1854,27 @@ const tool_postman = {
             const colorMap = { GET: 'var(--success)', POST: 'var(--warning)', PUT: 'var(--primary)', DELETE: 'var(--danger)', PATCH: '#8b5cf6' };
             html += '<span class="pm-stat-badge" style="border-left:3px solid ' + (colorMap[m] || 'var(--text-light)') + '">' + m + ': ' + c + '</span>';
         });
+
+        // cases 模式：统计测试点
+        if (showCases) {
+            let totalPoints = 0;
+            const dimCounts = {};
+            const priorityCounts = {};
+            this._apis.forEach(api => {
+                const pts = this._genTestPoints(api);
+                totalPoints += pts.length;
+                pts.forEach(p => {
+                    dimCounts[p.dimension] = (dimCounts[p.dimension] || 0) + 1;
+                    priorityCounts[p.priority] = (priorityCounts[p.priority] || 0) + 1;
+                });
+            });
+            html += '<span class="pm-stat-badge" style="border-left:3px solid #10b981">📋 测试点总数: ' + totalPoints + '</span>';
+            html += '<span class="pm-stat-badge" style="border-left:3px solid #ef4444">P0: ' + (priorityCounts['P0'] || 0) + '</span>';
+            html += '<span class="pm-stat-badge" style="border-left:3px solid #f59e0b">P1: ' + (priorityCounts['P1'] || 0) + '</span>';
+            html += '<span class="pm-stat-badge" style="border-left:3px solid #6366f1">P2: ' + (priorityCounts['P2'] || 0) + '</span>';
+            html += '<span class="pm-stat-badge" style="border-left:3px solid #94a3b8">P3: ' + (priorityCounts['P3'] || 0) + '</span>';
+            html += '<span class="pm-stat-badge pm-stat-dim">' + Object.keys(dimCounts).length + ' 个测试维度</span>';
+        }
         html += '</div>';
 
         html += '<div class="pm-api-list">';
@@ -1666,65 +1883,141 @@ const tool_postman = {
             const apiId = 'pm-api-' + idx;
             const preScript = this._genPreRequestScript(api);
             const testScript = this._genTestScript(api);
-            const hasBody = api.body && ['POST','PUT','PATCH'].includes(api.method);
 
             html += '<div class="pm-api-card">';
-            // 点击展开的头部
             html += '<div class="pm-api-header" onclick="tool_postman._toggle(\'' + apiId + '\')">';
             html += '<span class="pm-arrow" id="' + apiId + '-arrow">▶</span>';
             html += '<span class="pm-method ' + methodClass + '">' + api.method + '</span>';
             html += '<span class="pm-path">' + this._escape(api.path) + '</span>';
             if (api.summary) html += '<span class="pm-summary">' + this._escape(api.summary) + '</span>';
-            html += '<span class="pm-expand-hint">点击展开脚本</span>';
+            let hintText = '';
+            if (showCases) {
+                const pts = this._genTestPoints(api);
+                hintText = pts.length + ' 个测试点';
+            } else {
+                hintText = '点击展开脚本';
+            }
+            html += '<span class="pm-expand-hint">' + hintText + '</span>';
             html += '</div>';
 
-            // 展开内容
             html += '<div class="pm-api-detail" id="' + apiId + '" style="display:none">';
 
-            // 请求信息摘要
-            html += '<div class="pm-detail-section">';
-            html += '<div class="pm-detail-title">📤 请求信息</div>';
-            html += '<div class="pm-detail-content">';
-            html += '<div><b>接口：</b>' + api.method + ' ' + this._escape(api.path) + '</div>';
-            if (api.pathParams.length > 0) {
-                html += '<div><b>路径参数：</b>' + api.pathParams.map(p => p.key + '=' + p.value).join(', ') + '</div>';
-            }
-            if (api.queryParams.length > 0) {
-                html += '<div><b>Query参数：</b>' + api.queryParams.map(p => p.key + '=' + p.value).join('&') + '</div>';
-            }
-            if (api.headers.length > 0) {
-                html += '<div><b>请求头：</b>' + api.headers.map(h => h.key + ': ' + h.value).join(', ') + '</div>';
-            }
-            if (hasBody) {
-                html += '<div><b>请求体：</b><pre class="pm-json-preview">' + this._escape(JSON.stringify(api.body, null, 2)) + '</pre></div>';
-            }
-            html += '</div></div>';
+            // cases 模式：测试点表格
+            if (showCases) {
+                const points = this._genTestPoints(api);
 
-            // 响应信息
-            if (api.response) {
-                html += '<div class="pm-detail-section">';
-                html += '<div class="pm-detail-title">📥 响应示例 (HTTP ' + api.responseStatus + ')</div>';
-                html += '<div class="pm-detail-content"><pre class="pm-json-preview">' + this._escape(typeof api.response === 'object' ? JSON.stringify(api.response, null, 2) : api.response) + '</pre></div>';
+                // 维度分组统计
+                const dimSum = {};
+                points.forEach(p => { dimSum[p.dimension] = (dimSum[p.dimension] || 0) + 1; });
+
+                // 请求摘要
+                html += '<div class="tp-info-bar">';
+                if (api._bodySchema) {
+                    const reqFields = api._bodySchema.required || [];
+                    const keys = Object.keys(api._bodySchema.properties || {});
+                    html += '<span><b>必填字段：</b>' + (reqFields.length > 0 ? reqFields.join(', ') : '无') + '</span>';
+                    html += '<span><b>可选字段：</b>' + keys.filter(k => !reqFields.includes(k)).join(', ') || '无' + '</span>';
+                }
+                html += '<span><b>成功响应：</b>HTTP ' + api.responseStatus + '</span>';
+                if (api._responseCodes && api._responseCodes.filter(c => !c.startsWith('2')).length > 0) {
+                    html += '<span><b>错误码：</b>' + api._responseCodes.filter(c => !c.startsWith('2')).join(', ') + '</span>';
+                }
                 html += '</div>';
+
+                // 维度分布
+                html += '<div class="tp-dim-bar">';
+                const dimOrder = ['功能测试', '边界值', '异常处理', '安全', '性能', '兼容性', '易用性'];
+                dimOrder.forEach(d => {
+                    if (dimSum[d]) {
+                        html += '<span class="tp-dim-tag tp-dim-' + d + '">' + d + ' ×' + dimSum[d] + '</span>';
+                    }
+                });
+                html += '</div>';
+
+                // 测试点表格（带分页）
+                const totalPageCount = Math.ceil(points.length / this._pageSize);
+                let apiPage = this._pageStates[idx] || 1;
+                if (apiPage > totalPageCount) { apiPage = totalPageCount; this._pageStates[idx] = apiPage; }
+                if (apiPage < 1) { apiPage = 1; this._pageStates[idx] = 1; }
+                const startIdx = (apiPage - 1) * this._pageSize;
+                const pagePoints = points.slice(startIdx, startIdx + this._pageSize);
+
+                html += '<div class="tp-table-wrap">';
+                html += '<table class="tp-table">';
+                html += '<thead><tr>';
+                html += '<th class="tp-col-id">编号</th><th class="tp-col-dim">维度</th><th class="tp-col-desc">测试点描述</th>';
+                html += '<th class="tp-col-pri">优先级</th><th class="tp-col-pre">前置条件</th><th class="tp-col-exp">预期结果</th><th class="tp-col-method">方法</th>';
+                html += '</tr></thead><tbody>';
+
+                pagePoints.forEach(p => {
+                    const priClass = 'tp-pri-' + p.priority.toLowerCase();
+                    html += '<tr>';
+                    html += '<td class="tp-col-id">' + p.id + '</td>';
+                    html += '<td class="tp-col-dim"><span class="tp-dim-' + p.dimension + '">' + p.dimension + '</span></td>';
+                    html += '<td class="tp-col-desc">' + this._escape(p.description) + '</td>';
+                    html += '<td class="tp-col-pri"><span class="' + priClass + '">' + p.priority + '</span></td>';
+                    html += '<td class="tp-col-pre">' + this._escape(p.precondition) + '</td>';
+                    html += '<td class="tp-col-exp">' + this._escape(p.expected) + '</td>';
+                    html += '<td class="tp-col-method">' + p.method + '</td>';
+                    html += '</tr>';
+                });
+
+                html += '</tbody></table>';
+                html += '</div>';
+
+                // 分页控件
+                if (totalPageCount > 1) {
+                    html += '<div class="tp-pagination">';
+                    html += '<span class="tp-pg-info">共 ' + points.length + ' 条，第 ' + apiPage + '/' + totalPageCount + ' 页</span>';
+                    html += '<div class="tp-pg-btns">';
+                    html += '<button class="tp-pg-btn" onclick="tool_postman._goToPage(' + idx + ',1)" ' + (apiPage === 1 ? 'disabled' : '') + ' title="首页">&laquo;</button>';
+                    html += '<button class="tp-pg-btn" onclick="tool_postman._goToPage(' + idx + ',' + (apiPage - 1) + ')" ' + (apiPage === 1 ? 'disabled' : '') + ' title="上一页">&lsaquo;</button>';
+
+                    const maxVisible = 5;
+                    let pgStart = Math.max(1, apiPage - Math.floor(maxVisible / 2));
+                    let pgEnd = Math.min(totalPageCount, pgStart + maxVisible - 1);
+                    if (pgEnd - pgStart < maxVisible - 1) {
+                        pgStart = Math.max(1, pgEnd - maxVisible + 1);
+                    }
+                    for (let p = pgStart; p <= pgEnd; p++) {
+                        html += '<button class="tp-pg-btn tp-pg-num' + (p === apiPage ? ' active' : '') + '" onclick="tool_postman._goToPage(' + idx + ',' + p + ')">' + p + '</button>';
+                    }
+
+                    html += '<button class="tp-pg-btn" onclick="tool_postman._goToPage(' + idx + ',' + (apiPage + 1) + ')" ' + (apiPage === totalPageCount ? 'disabled' : '') + ' title="下一页">&rsaquo;</button>';
+                    html += '<button class="tp-pg-btn" onclick="tool_postman._goToPage(' + idx + ',' + totalPageCount + ')" ' + (apiPage === totalPageCount ? 'disabled' : '') + ' title="末页">&raquo;</button>';
+                    html += '</div>';
+                    html += '<select class="tp-pg-size" onchange="tool_postman._changePageSize(' + idx + ',this.value)">';
+                    [50, 110, 200, 500].forEach(s => {
+                        html += '<option value="' + s + '"' + (this._pageSize === s ? ' selected' : '') + '>每页 ' + s + ' 条</option>';
+                    });
+                    html += '</select>';
+                    html += '</div>';
+                }
+
+                // 测试方法说明
+                const allMethods = [...new Set(points.map(p => p.method).filter(m => m !== '-'))];
+                if (allMethods.length > 0) {
+                    html += '<div class="tp-method-note"><b>测试设计方法：</b>' + allMethods.join('、') + '</div>';
+                }
             }
 
-            // Pre-request Script
-            html += '<div class="pm-detail-section">';
-            html += '<div class="pm-detail-title">⚡ Pre-request Script</div>';
-            html += '<div class="pm-detail-content">';
-            html += '<div class="pm-code-wrap"><pre class="pm-code"><code>' + this._escape(preScript) + '</code></pre>';
-            html += '<button class="btn btn-small btn-outline pm-copy-btn" onclick="tool_postman._copyCode(this, \'' + apiId + '-pre\')">📋 复制</button>';
-            html += '</div></div></div>';
+            // scripts 模式
+            if (showScripts) {
+                html += '<div class="pm-detail-section">';
+                html += '<div class="pm-detail-title">⚡ Pre-request Script</div>';
+                html += '<div class="pm-detail-content">';
+                html += '<div class="pm-code-wrap"><pre class="pm-code"><code>' + this._escape(preScript) + '</code></pre>';
+                html += '<button class="btn btn-small btn-outline pm-copy-btn" onclick="tool_postman._copyCode(this, \'' + apiId + '-pre\')">📋 复制</button>';
+                html += '</div></div></div>';
 
-            // Tests Script
-            html += '<div class="pm-detail-section">';
-            html += '<div class="pm-detail-title">🧪 Tests 脚本</div>';
-            html += '<div class="pm-detail-content">';
-            html += '<div class="pm-code-wrap"><pre class="pm-code"><code>' + this._escape(testScript) + '</code></pre>';
-            html += '<button class="btn btn-small btn-outline pm-copy-btn" onclick="tool_postman._copyCode(this, \'' + apiId + '-test\')">📋 复制</button>';
-            html += '</div></div></div>';
+                html += '<div class="pm-detail-section">';
+                html += '<div class="pm-detail-title">🧪 Tests 脚本</div>';
+                html += '<div class="pm-detail-content">';
+                html += '<div class="pm-code-wrap"><pre class="pm-code"><code>' + this._escape(testScript) + '</code></pre>';
+                html += '<button class="btn btn-small btn-outline pm-copy-btn" onclick="tool_postman._copyCode(this, \'' + apiId + '-test\')">📋 复制</button>';
+                html += '</div></div></div>';
+            }
 
-            // 隐藏的纯文本用于复制
             html += '<textarea style="display:none" id="' + apiId + '-pre">' + this._escape(preScript) + '</textarea>';
             html += '<textarea style="display:none" id="' + apiId + '-test">' + this._escape(testScript) + '</textarea>';
 
@@ -1733,18 +2026,40 @@ const tool_postman = {
         html += '</div>';
 
         container.innerHTML = html;
+
+        // 恢复展开状态
+        this._expandedApis.forEach(idx => {
+            const detail = document.getElementById('pm-api-' + idx);
+            const arrow = document.getElementById('pm-api-' + idx + '-arrow');
+            if (detail) { detail.style.display = 'block'; }
+            if (arrow) { arrow.textContent = '▼'; }
+        });
     },
 
     _toggle(apiId) {
         const detail = document.getElementById(apiId);
         const arrow = document.getElementById(apiId + '-arrow');
+        const idx = parseInt(apiId.replace('pm-api-', ''));
         if (detail.style.display === 'none') {
             detail.style.display = 'block';
             arrow.textContent = '▼';
+            this._expandedApis.add(idx);
         } else {
             detail.style.display = 'none';
             arrow.textContent = '▶';
+            this._expandedApis.delete(idx);
         }
+    },
+
+    _goToPage(apiIdx, page) {
+        this._pageStates[apiIdx] = page;
+        this._render();
+    },
+
+    _changePageSize(apiIdx, size) {
+        this._pageSize = parseInt(size);
+        this._pageStates = {};
+        this._render();
     },
 
     _copyCode(btn, textareaId) {
@@ -1892,11 +2207,366 @@ const tool_postman = {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 
+    exportTestCasesCSV() {
+        if (this._apis.length === 0) { showToast('请先生成测试用例'); return; }
+
+        const csvHeader = '编号,接口,维度,测试点描述,优先级,前置条件,预期结果,测试方法';
+        const csvRows = [csvHeader];
+
+        this._apis.forEach(api => {
+            const points = this._genTestPoints(api);
+            const escapeCsv = v => '\"' + String(v || '').replace(/\"/g, '\"\"') + '\"';
+            points.forEach(p => {
+                const row = [
+                    p.id,
+                    escapeCsv(api.method + ' ' + api.path),
+                    p.dimension,
+                    escapeCsv(p.description),
+                    p.priority,
+                    escapeCsv(p.precondition),
+                    escapeCsv(p.expected),
+                    p.method
+                ];
+                csvRows.push(row.join(','));
+            });
+        });
+
+        const BOM = '\uFEFF';
+        const blob = new Blob([BOM + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        a.download = 'test-cases.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('CSV 已下载');
+    },
+
     clear() {
         document.getElementById('pm-input').value = '';
-        document.getElementById('pm-output').innerHTML = '<div class="pm-placeholder">粘贴接口文档后点击「生成脚本」</div>';
+        document.getElementById('pm-output').innerHTML = '<div class="pm-placeholder">粘贴接口文档后点击「生成测试用例」或「生成Postman脚本」</div>';
         document.getElementById('pm-status').textContent = '';
         this._apis = [];
+        this._mode = null;
+        this._pageStates = {};
+        this._expandedApis = new Set();
+    }
+};
+
+// ===== 工具：简单接口测试 =====
+const tool_apitest = {
+    _headers: [{ key: 'Content-Type', value: 'application/json' }],
+
+    send() {
+        const method = document.getElementById('api-method').value;
+        const url = document.getElementById('api-url').value.trim();
+        const bodyText = document.getElementById('api-body').value.trim();
+        const statusEl = document.getElementById('api-status');
+        const responseArea = document.getElementById('api-response-area');
+
+        if (!url) { showToast('请输入接口地址'); return; }
+
+        // 收集请求头
+        const headers = {};
+        const headerRows = document.querySelectorAll('#api-headers .api-header-row');
+        headerRows.forEach(row => {
+            const keyEl = row.querySelector('.api-header-key');
+            const valEl = row.querySelector('.api-header-value');
+            if (keyEl && valEl) {
+                const k = keyEl.value.trim();
+                const v = valEl.value.trim();
+                if (k) headers[k] = v;
+            }
+        });
+
+        // 构建请求配置
+        const fetchOptions = {
+            method: method,
+            headers: headers
+        };
+
+        if (['POST', 'PUT', 'PATCH'].includes(method) && bodyText) {
+            fetchOptions.body = bodyText;
+        }
+
+        // 显示 loading
+        statusEl.textContent = '⏳ 请求中...';
+        statusEl.className = 'toolbar-status';
+        responseArea.style.display = 'block';
+        document.getElementById('api-response-body').textContent = '请求中...';
+        document.getElementById('api-response-meta').innerHTML = '';
+        document.getElementById('api-response-time').textContent = '';
+
+        const startTime = Date.now();
+
+        // 发送请求
+        fetch(url, fetchOptions)
+            .then(async (res) => {
+                const elapsed = Date.now() - startTime;
+                const contentType = res.headers.get('content-type') || '';
+                const status = res.status;
+                const statusText = res.statusText;
+
+                let resBody;
+                if (contentType.includes('application/json')) {
+                    try {
+                        resBody = JSON.stringify(await res.json(), null, 2);
+                    } catch (e) {
+                        resBody = await res.text();
+                    }
+                } else {
+                    resBody = await res.text();
+                }
+
+                // 状态标记
+                statusEl.textContent = status >= 200 && status < 300 ? '✅ 请求成功' : '⚠️ 请求完成';
+                statusEl.className = 'toolbar-status ' + (status >= 200 && status < 300 ? 'success' : 'error');
+
+                document.getElementById('api-response-time').textContent = elapsed + 'ms';
+
+                // 元信息
+                let metaHTML = '<span class="api-status-code ' + (status >= 200 && status < 300 ? 'api-status-ok' : 'api-status-err') + '">' + status + ' ' + statusText + '</span>';
+                document.getElementById('api-response-meta').innerHTML = metaHTML;
+
+                document.getElementById('api-response-body').textContent = resBody;
+            })
+            .catch((err) => {
+                const elapsed = Date.now() - startTime;
+                statusEl.textContent = '❌ 请求失败';
+                statusEl.className = 'toolbar-status error';
+
+                document.getElementById('api-response-time').textContent = elapsed + 'ms';
+                document.getElementById('api-response-meta').innerHTML = '<span class="api-status-code api-status-err">请求失败</span>';
+                document.getElementById('api-response-body').textContent = err.message + '\n\n提示：浏览器端请求可能受 CORS 策略限制，请确保接口允许跨域访问。';
+            });
+    },
+
+    _addHeaderRow() {
+        const container = document.getElementById('api-headers');
+        const row = document.createElement('div');
+        row.className = 'api-header-row';
+        row.innerHTML = `
+            <input type="text" class="api-header-key" placeholder="Header Key">
+            <input type="text" class="api-header-value" placeholder="Header Value">
+            <button class="api-header-remove" onclick="tool_apitest._removeHeaderRow(this)" title="删除">×</button>
+        `;
+        container.appendChild(row);
+    },
+
+    _removeHeaderRow(btn) {
+        const container = document.getElementById('api-headers');
+        if (container.querySelectorAll('.api-header-row').length <= 1) {
+            showToast('至少保留一个请求头');
+            return;
+        }
+        btn.parentElement.remove();
+    },
+
+    generateOpenAPI() {
+        try {
+            this._doGenerateOpenAPI();
+        } catch (e) {
+            console.error('生成OpenAPI失败:', e);
+            showToast('生成失败：' + (e.message || '未知错误'));
+        }
+    },
+
+    _doGenerateOpenAPI() {
+        const methodEl = document.getElementById('api-method');
+        const urlEl = document.getElementById('api-url');
+        const bodyEl = document.getElementById('api-body');
+        if (!methodEl || !urlEl || !bodyEl) { showToast('页面元素未就绪，请刷新页面'); return; }
+
+        const method = methodEl.value.toLowerCase();
+        const urlStr = urlEl.value.trim();
+        const bodyText = bodyEl.value.trim();
+
+        if (!urlStr) { showToast('请先输入接口地址'); return; }
+
+        // 解析 URL（兼容无协议头的输入）
+        let url;
+        try {
+            url = new URL(urlStr.startsWith('http') ? urlStr : 'http://' + urlStr);
+        } catch (e) {
+            showToast('接口地址格式不正确'); return;
+        }
+
+        const host = url.host;
+        const path = url.pathname + url.search;
+        const scheme = url.protocol.replace(':', '');
+
+        // 收集请求头
+        const headers = {};
+        const headerRows = document.querySelectorAll('#api-headers .api-header-row');
+        if (headerRows && headerRows.length > 0) {
+            headerRows.forEach(row => {
+                const keyEl = row.querySelector('.api-header-key');
+                const valEl = row.querySelector('.api-header-value');
+                if (keyEl && valEl) {
+                    const k = keyEl.value.trim();
+                    const v = valEl.value.trim();
+                    if (k) headers[k] = v;
+                }
+            });
+        }
+
+        // 提取 tag（路径第一段作为分组）
+        const cleanPath = url.pathname.replace(/^\/+|\/+$/g, '');
+        const pathParts = cleanPath ? cleanPath.split('/') : [];
+        const tagName = pathParts[0] || 'default';
+        const opId = (method + '_' + (cleanPath || 'root').replace(/[^a-zA-Z0-9]/g, '_')).replace(/__+/g, '_').replace(/^_|_$/g, '');
+
+        // 构建 OpenAPI 3.0 文档
+        const pathObj = {};
+        pathObj[method] = {
+            tags: [tagName],
+            summary: opId.replace(/_/g, ' '),
+            operationId: opId,
+            responses: {
+                '200': { description: '成功响应', content: {} },
+                '400': { description: '请求参数错误' },
+                '500': { description: '服务器内部错误' }
+            }
+        };
+
+        // 提取 query 参数（兼容不支持 forEach 的环境）
+        const params = [];
+        if (url.searchParams && typeof url.searchParams.forEach === 'function') {
+            url.searchParams.forEach((value, key) => {
+                params.push({ name: key, in: 'query', schema: { type: 'string', example: value || '' }, description: '' });
+            });
+        } else if (url.search) {
+            // 兼容旧浏览器
+            url.search.replace(/^\?/, '').split('&').forEach(pair => {
+                if (!pair) return;
+                const [key, val] = pair.split('=');
+                if (key) params.push({ name: decodeURIComponent(key), in: 'query', schema: { type: 'string', example: decodeURIComponent(val || '') }, description: '' });
+            });
+        }
+        if (params.length > 0) pathObj[method].parameters = params;
+
+        // 路径参数
+        url.pathname.split('/').forEach(seg => {
+            if (seg.startsWith('{') && seg.endsWith('}')) {
+                const paramName = seg.slice(1, -1);
+                pathObj[method].parameters = pathObj[method].parameters || [];
+                if (!pathObj[method].parameters.some(p => p.name === paramName)) {
+                    pathObj[method].parameters.push({
+                        name: paramName, in: 'path', required: true,
+                        schema: { type: 'string' }, description: ''
+                    });
+                }
+            }
+        });
+
+        // 请求体
+        if (['post', 'put', 'patch'].includes(method) && bodyText) {
+            let schema;
+            try {
+                const bodyJson = JSON.parse(bodyText);
+                schema = this._inferSchema(bodyJson);
+            } catch (e) {
+                schema = { type: 'string', example: bodyText };
+            }
+            pathObj[method].requestBody = {
+                required: true,
+                content: {}
+            };
+            const ct = headers['Content-Type'] || headers['content-type'] || 'application/json';
+            pathObj[method].requestBody.content[ct] = { schema: schema };
+        }
+
+        // 构建完整文档
+        const openapi = {
+            openapi: '3.0.3',
+            info: {
+                title: tagName + ' API',
+                description: '接口描述（请根据实际情况修改）',
+                version: '1.0.0'
+            },
+            servers: [{ url: scheme + '://' + host, description: host }],
+            paths: {}
+        };
+        openapi.paths[path] = pathObj;
+
+        // 显示结果
+        const output = document.getElementById('api-openapi-output');
+        const area = document.getElementById('api-openapi-area');
+        if (!output || !area) { showToast('页面元素未就绪，请刷新页面'); return; }
+
+        output.textContent = JSON.stringify(openapi, null, 2);
+        area.style.display = 'block';
+        try { area.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
+    },
+
+    _copyOpenAPI() {
+        try {
+            const el = document.getElementById('api-openapi-output');
+            if (!el) { showToast('请先生成OpenAPI文档'); return; }
+            navigator.clipboard.writeText(el.textContent).then(
+                () => showToast('已复制到剪贴板'),
+                () => showToast('复制失败，请手动复制')
+            );
+        } catch (e) { showToast('复制失败'); }
+    },
+
+    _downloadOpenAPI() {
+        try {
+            const el = document.getElementById('api-openapi-output');
+            if (!el) { showToast('请先生成OpenAPI文档'); return; }
+            const blob = new Blob([el.textContent], { type: 'application/json;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'openapi.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        } catch (e) { showToast('下载失败'); }
+    },
+
+    _inferSchema(obj) {
+        if (Array.isArray(obj)) {
+            if (obj.length > 0) return { type: 'array', items: this._inferSchema(obj[0]) };
+            return { type: 'array', items: { type: 'string' } };
+        }
+        if (typeof obj === 'object' && obj !== null) {
+            const props = {}, required = [];
+            Object.keys(obj).forEach(key => {
+                const value = obj[key];
+                props[key] = this._inferSchema(value);
+                if (value !== null && value !== undefined) required.push(key);
+            });
+            const result = { type: 'object', properties: props };
+            if (required.length > 0) result.required = required;
+            return result;
+        }
+        if (obj === null) return { type: 'string', nullable: true };
+        const typeMap = { 'string': 'string', 'number': 'number', 'boolean': 'boolean' };
+        const schemaType = typeMap[typeof obj] || 'string';
+        return { type: schemaType, example: obj !== undefined ? obj : '' };
+    },
+
+    clear() {
+        document.getElementById('api-url').value = '';
+        document.getElementById('api-body').value = '';
+        document.getElementById('api-method').value = 'GET';
+        document.getElementById('api-status').textContent = '';
+        document.getElementById('api-status').className = 'toolbar-status';
+        document.getElementById('api-response-area').style.display = 'none';
+        document.getElementById('api-openapi-area').style.display = 'none';
+
+        // 重置请求头
+        const container = document.getElementById('api-headers');
+        container.innerHTML = `
+            <div class="api-header-row">
+                <input type="text" class="api-header-key" placeholder="Header Key" value="Content-Type">
+                <input type="text" class="api-header-value" placeholder="Header Value" value="application/json">
+                <button class="api-header-remove" onclick="tool_apitest._removeHeaderRow(this)" title="删除">×</button>
+            </div>
+        `;
     }
 };
 

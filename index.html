@@ -31,11 +31,12 @@
                 <div class="nav-group">
                     <div class="nav-group-title">📝 需求管理</div>
                     <button class="nav-item" data-tool="requirement">需求描述优化</button>
-                    <button class="nav-item" data-tool="testcase">生成测试用例</button>
+                    <button class="nav-item" data-tool="testcase">生成需求测试用例</button>
                 </div>
                 <div class="nav-group">
                     <div class="nav-group-title">🔌 接口测试</div>
-                    <button class="nav-item" data-tool="postman">生成Postman脚本</button>
+                    <button class="nav-item" data-tool="apitest">简单接口测试</button>
+                    <button class="nav-item" data-tool="postman">生成接口测试用例或脚本</button>
                 </div>
                 <div class="nav-group">
                     <div class="nav-group-title">🔢 常用工具</div>
@@ -362,6 +363,88 @@
                     </div>
                 </div>
             </section>
+            <!-- 简单接口测试 -->
+            <section class="tool-panel" id="panel-apitest">
+                <div class="panel-header">
+                    <h2>🔌 简单接口测试</h2>
+                    <p>输入请求方式、接口地址、请求头、请求体，快速发送接口请求并查看响应结果</p>
+                </div>
+                <div class="panel-body">
+                    <!-- 请求配置区 -->
+                    <div class="api-request-bar">
+                        <select id="api-method" class="api-method-select">
+                            <option value="GET" selected>GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                        <input type="text" id="api-url" class="api-url-input" placeholder="输入接口地址，如 https://api.example.com/users">
+                        <button class="btn btn-primary" onclick="tool_apitest.send()">🚀 发送</button>
+                        <button class="btn btn-outline" onclick="tool_apitest.generateOpenAPI()">📄 生成OpenAPI</button>
+                        <button class="btn btn-outline" onclick="tool_apitest.clear()">🗑️ 清空</button>
+                        <span class="toolbar-status" id="api-status"></span>
+                    </div>
+
+                    <div class="api-detail-area">
+                        <!-- 请求头 -->
+                        <div class="api-section">
+                            <div class="api-section-header">
+                                <span class="api-section-title">📋 请求头 (Headers)</span>
+                                <button class="btn btn-small btn-outline" onclick="tool_apitest._addHeaderRow()">+ 添加</button>
+                            </div>
+                            <div class="api-headers-container" id="api-headers">
+                                <div class="api-header-row">
+                                    <input type="text" class="api-header-key" placeholder="Header Key" value="Content-Type">
+                                    <input type="text" class="api-header-value" placeholder="Header Value" value="application/json">
+                                    <button class="api-header-remove" onclick="tool_apitest._removeHeaderRow(this)" title="删除">×</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 请求体 -->
+                        <div class="api-section" id="api-body-section">
+                            <div class="api-section-header">
+                                <span class="api-section-title">📦 请求体 (Body)</span>
+                                <span class="api-body-hint">仅 POST / PUT / PATCH 有效</span>
+                            </div>
+                            <textarea id="api-body" class="code-input api-body-input" placeholder='输入 JSON 格式的请求体，例如：&#10;{&#10;  "name": "test",&#10;  "value": 123&#10;}'></textarea>
+                        </div>
+                    </div>
+
+                    <!-- 响应区 -->
+                    <div class="api-response-area" id="api-response-area" style="display:none;">
+                        <div class="api-section">
+                            <div class="api-section-header">
+                                <span class="api-section-title">📥 响应结果</span>
+                                <span class="api-response-time" id="api-response-time"></span>
+                            </div>
+                            <div class="api-response-meta" id="api-response-meta"></div>
+                            <div class="api-response-body-wrap">
+                                <pre class="api-response-body" id="api-response-body"></pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OpenAPI 输出区 -->
+                    <div class="api-openapi-area" id="api-openapi-area" style="display:none;">
+                        <div class="api-section">
+                            <div class="api-section-header">
+                                <span class="api-section-title">📄 OpenAPI 3.0 文档</span>
+                                <div class="api-openapi-actions">
+                                    <button class="btn btn-small btn-primary" onclick="tool_apitest._copyOpenAPI()">📋 复制JSON</button>
+                                    <button class="btn btn-small btn-outline" onclick="tool_apitest._downloadOpenAPI()">⬇️ 下载</button>
+                                    <button class="api-header-remove" onclick="document.getElementById('api-openapi-area').style.display='none'" title="关闭">×</button>
+                                </div>
+                            </div>
+                            <div class="api-response-body-wrap" style="max-height:600px;">
+                                <pre class="api-response-body" id="api-openapi-output"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- 生成Postman脚本 -->
             <section class="tool-panel" id="panel-postman">
                 <div class="panel-header">
@@ -370,9 +453,8 @@
                 </div>
                 <div class="panel-body">
                     <div class="toolbar">
-                        <button class="btn btn-primary" onclick="tool_postman.generate()">🚀 生成用例+脚本</button>
-                        <button class="btn btn-outline" onclick="tool_postman.generate('cases')">📋 仅生成测试用例</button>
-                        <button class="btn btn-outline" onclick="tool_postman.generate('scripts')">🧪 仅生成脚本</button>
+                        <button class="btn btn-primary" onclick="tool_postman.generate('cases')">📋 生成接口测试用例</button>
+                        <button class="btn btn-primary" onclick="tool_postman.generate('scripts')">🧪 生成Postman脚本</button>
                         <button class="btn btn-outline" onclick="tool_postman.exportCollection()">📥 导出 Collection</button>
                         <button class="btn btn-outline" onclick="tool_postman.exportTestCasesCSV()">📊 导出测试用例CSV</button>
                         <button class="btn btn-outline" onclick="tool_postman.exportEnv()">⚙️ 导出环境变量</button>
@@ -385,9 +467,9 @@
                             <textarea id="pm-input" class="code-input" placeholder="支持以下输入格式：&#10;&#10;1. OpenAPI/Swagger JSON&#10;2. 自由文本接口描述，例如：&#10;&#10;POST /api/login 用户登录&#10;请求头: Content-Type: application/json&#10;请求体: {"username":"admin","password":"123456"}&#10;响应: {"code":0,"data":{"token":"xxx"}}&#10;&#10;GET /api/users?page=1&size=20&#10;获取用户列表&#10;请求头: Authorization: Bearer {token}&#10;响应: {"code":0,"data":{"list":[...],"total":100}}&#10;&#10;PUT /api/users/:id 更新用户&#10;请求体: {"name":"张三","email":"test@qq.com"}&#10;响应: {"code":0,"data":{...}}&#10;&#10;DELETE /api/users/:id 删除用户&#10;响应: {"code":0,"message":"删除成功"}"></textarea>
                         </div>
                         <div class="io-panel">
-                            <div class="io-label">生成的测试用例 &amp; Postman 脚本</div>
+                            <div class="io-label">生成结果</div>
                             <div class="pm-output" id="pm-output">
-                                <div class="pm-placeholder">粘贴接口文档后点击「生成用例+脚本」</div>
+                                <div class="pm-placeholder">粘贴接口文档后点击「生成接口测试用例」或「生成Postman脚本」</div>
                             </div>
                         </div>
                     </div>
