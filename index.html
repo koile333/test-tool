@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试工具箱 - QA Tools</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1>🧰 测试工具箱</h1>
+                <p>QA Engineer Tools</p>
+            </div>
+            <button class="sidebar-toggle" id="sidebarToggle" title="收起侧栏">◀</button>
+            <nav class="sidebar-nav">
+                <div class="nav-group">
+                    <div class="nav-group-title">📋 数据处理</div>
+                    <button class="nav-item active" data-tool="json">JSON 格式化</button>
+                    <button class="nav-item" data-tool="diff">文本差异对比</button>
+                    <button class="nav-item" data-tool="sql">SQL 格式化</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-title">🔐 编码转换</div>
+                    <button class="nav-item" data-tool="base64">Base64 编解码</button>
+                    <button class="nav-item" data-tool="url">URL 编解码</button>
+                    <button class="nav-item" data-tool="unicode">Unicode 转换</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-title">📝 需求管理</div>
+                    <button class="nav-item" data-tool="requirement">需求描述优化</button>
+                    <button class="nav-item" data-tool="testcase">生成测试用例</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-title">🔌 接口测试</div>
+                    <button class="nav-item" data-tool="postman">生成Postman脚本</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-title">🔢 常用工具</div>
+                    <button class="nav-item" data-tool="timestamp">时间戳转换</button>
+                    <button class="nav-item" data-tool="regex">正则表达式测试</button>
+                    <button class="nav-item" data-tool="hash">哈希/MD5 生成</button>
+                    <button class="nav-item" data-tool="random">随机数据生成</button>
+                </div>
+            </nav>
+            <div class="sidebar-footer">
+                <span>v1.0 · QA Tool Suite</span>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- JSON 格式化 -->
+            <section class="tool-panel active" id="panel-json">
+                <div class="panel-header">
+                    <h2>📋 JSON 格式化 / 验证</h2>
+                    <p>格式化、压缩、验证JSON数据，快速定位语法错误</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_json.format()">🎨 格式化</button>
+                        <button class="btn btn-outline" onclick="tool_json.compress()">📦 压缩</button>
+                        <button class="btn btn-outline" onclick="tool_json.validate()">✅ 验证</button>
+                        <button class="btn btn-outline" onclick="tool_json.clear()">🗑️ 清空</button>
+                        <span class="toolbar-status" id="json-status"></span>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">输入</div>
+                            <textarea id="json-input" class="code-input" placeholder='粘贴 JSON 数据，例如：&#10;{"name":"test","value":123}'></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">输出</div>
+                            <textarea id="json-output" class="code-input" readonly placeholder="格式化结果将显示在此处"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 文本差异对比 -->
+            <section class="tool-panel" id="panel-diff">
+                <div class="panel-header">
+                    <h2>📊 文本差异对比</h2>
+                    <p>对比两段文本，快速发现差异（适用接口返回对比、配置对比等）</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_diff.compare()">🔍 对比差异</button>
+                        <button class="btn btn-outline" onclick="tool_diff.clear()">🗑️ 清空</button>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="diff-ignore-space" onchange="tool_diff.compare()"> 忽略空格
+                        </label>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="diff-ignore-case" onchange="tool_diff.compare()"> 忽略大小写
+                        </label>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">原始文本</div>
+                            <textarea id="diff-left" class="code-input diff-input" placeholder="粘贴原始文本..."></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">对比文本</div>
+                            <textarea id="diff-right" class="code-input diff-input" placeholder="粘贴对比文本..."></textarea>
+                        </div>
+                    </div>
+                    <div class="diff-result" id="diff-result"></div>
+                </div>
+            </section>
+
+            <!-- SQL 格式化 -->
+            <section class="tool-panel" id="panel-sql">
+                <div class="panel-header">
+                    <h2>📊 SQL 格式化</h2>
+                    <p>格式化SQL语句，提升可读性，方便排查问题</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_sql.format()">🎨 格式化</button>
+                        <button class="btn btn-outline" onclick="tool_sql.compress()">📦 压缩</button>
+                        <button class="btn btn-outline" onclick="tool_sql.clear()">🗑️ 清空</button>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">输入</div>
+                            <textarea id="sql-input" class="code-input" placeholder="SELECT * FROM users WHERE status=1 ORDER BY id DESC LIMIT 10;"></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">输出</div>
+                            <textarea id="sql-output" class="code-input" readonly placeholder="格式化结果"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Base64 编解码 -->
+            <section class="tool-panel" id="panel-base64">
+                <div class="panel-header">
+                    <h2>🔐 Base64 编解码</h2>
+                    <p>Base64编码/解码，常用于接口鉴权、数据传输场景</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_base64.encode()">🔒 编码</button>
+                        <button class="btn btn-primary" onclick="tool_base64.decode()">🔓 解码</button>
+                        <button class="btn btn-outline" onclick="tool_base64.clear()">🗑️ 清空</button>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">输入</div>
+                            <textarea id="base64-input" class="code-input" placeholder="输入需要编解码的文本..."></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">输出</div>
+                            <textarea id="base64-output" class="code-input" readonly placeholder="结果将显示在此处"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- URL 编解码 -->
+            <section class="tool-panel" id="panel-url">
+                <div class="panel-header">
+                    <h2>🔗 URL 编解码</h2>
+                    <p>URL编码(encodeURIComponent)和解码，处理接口参数</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_url.encode()">🔒 编码</button>
+                        <button class="btn btn-primary" onclick="tool_url.decode()">🔓 解码</button>
+                        <button class="btn btn-outline" onclick="tool_url.clear()">🗑️ 清空</button>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">输入</div>
+                            <textarea id="url-input" class="code-input" placeholder="输入需要编解码的URL或参数..."></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">输出</div>
+                            <textarea id="url-output" class="code-input" readonly placeholder="结果将显示在此处"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Unicode 转换 -->
+            <section class="tool-panel" id="panel-unicode">
+                <div class="panel-header">
+                    <h2>🔤 Unicode 转换</h2>
+                    <p>字符串与Unicode互相转换，处理\uXXXX编码</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_unicode.toUnicode()">→ Unicode</button>
+                        <button class="btn btn-primary" onclick="tool_unicode.toString()">→ 字符串</button>
+                        <button class="btn btn-outline" onclick="tool_unicode.clear()">🗑️ 清空</button>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">输入</div>
+                            <textarea id="unicode-input" class="code-input" placeholder="输入字符串或Unicode编码..."></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">输出</div>
+                            <textarea id="unicode-output" class="code-input" readonly placeholder="转换结果"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 时间戳转换 -->
+            <section class="tool-panel" id="panel-timestamp">
+                <div class="panel-header">
+                    <h2>⏱️ 时间戳转换</h2>
+                    <p>Unix时间戳与日期时间互转，支持秒/毫秒</p>
+                </div>
+                <div class="panel-body">
+                    <div class="timestamp-current">
+                        <span>当前时间戳：</span>
+                        <code id="current-ts">--</code>
+                        <span>（秒）</span>
+                        <code id="current-ts-ms">--</code>
+                        <span>（毫秒）</span>
+                    </div>
+                    <div class="io-area timestamp-io">
+                        <div class="io-panel">
+                            <div class="io-label">时间戳 → 日期</div>
+                            <div class="input-row">
+                                <input type="text" id="ts-input" class="text-input" placeholder="输入时间戳（秒或毫秒）">
+                                <button class="btn btn-primary" onclick="tool_timestamp.tsToDate()">转换 →</button>
+                            </div>
+                            <div class="result-box" id="ts-date-result">--</div>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">日期 → 时间戳</div>
+                            <div class="input-row">
+                                <input type="datetime-local" id="date-input" class="text-input">
+                                <button class="btn btn-primary" onclick="tool_timestamp.dateToTs()">转换 →</button>
+                            </div>
+                            <div class="result-box" id="date-ts-result">--</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 正则表达式测试 -->
+            <section class="tool-panel" id="panel-regex">
+                <div class="panel-header">
+                    <h2>🔍 正则表达式测试</h2>
+                    <p>在线测试正则表达式，高亮显示匹配结果（接口字段校验、日志分析等）</p>
+                </div>
+                <div class="panel-body">
+                    <div class="regex-config">
+                        <div class="input-row">
+                            <label>正则表达式：</label>
+                            <input type="text" id="regex-pattern" class="text-input" placeholder="/pattern/flags 或 直接写表达式">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="regex-global" checked> 全局(g)
+                            </label>
+                            <label class="toggle-label">
+                                <input type="checkbox" id="regex-ignore"> 忽略大小写(i)
+                            </label>
+                            <label class="toggle-label">
+                                <input type="checkbox" id="regex-multiline"> 多行(m)
+                            </label>
+                            <button class="btn btn-primary" onclick="tool_regex.test()">🔍 匹配</button>
+                        </div>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">测试文本</div>
+                            <textarea id="regex-input" class="code-input" placeholder="粘贴需要测试的文本..."></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">匹配结果</div>
+                            <div class="result-box regex-result" id="regex-result"></div>
+                            <div class="regex-highlight" id="regex-highlight"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 哈希/MD5 -->
+            <section class="tool-panel" id="panel-hash">
+                <div class="panel-header">
+                    <h2>🔑 哈希 / MD5 生成</h2>
+                    <p>生成MD5、SHA系列哈希值，用于数据校验、签名验证</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_hash.generate('MD5')">MD5</button>
+                        <button class="btn btn-primary" onclick="tool_hash.generate('SHA-1')">SHA-1</button>
+                        <button class="btn btn-primary" onclick="tool_hash.generate('SHA-256')">SHA-256</button>
+                        <button class="btn btn-primary" onclick="tool_hash.generate('SHA-512')">SHA-512</button>
+                        <button class="btn btn-outline" onclick="tool_hash.clear()">🗑️ 清空</button>
+                    </div>
+                    <div class="hash-area">
+                        <textarea id="hash-input" class="code-input" placeholder="输入需要生成哈希值的文本..."></textarea>
+                        <div class="hash-results" id="hash-results"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 需求描述优化 -->
+            <section class="tool-panel" id="panel-requirement">
+                <div class="panel-header">
+                    <h2>📝 需求描述优化</h2>
+                    <p>将原始需求描述结构化，补充验收标准、边界条件，提高需求可测性</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_requirement.optimize('standard')">📋 标准优化</button>
+                        <button class="btn btn-outline" onclick="tool_requirement.optimize('detail')">📑 详细展开</button>
+                        <button class="btn btn-outline" onclick="tool_requirement.analyze()">🔎 问题分析</button>
+                        <button class="btn btn-outline" onclick="tool_requirement.clear()">🗑️ 清空</button>
+                    </div>
+                    <div class="io-area">
+                        <div class="io-panel">
+                            <div class="io-label">原始需求描述</div>
+                            <textarea id="req-input" class="code-input" placeholder="输入原始需求描述，例如：&#10;用户登录功能，输入用户名密码，验证通过后进入首页，密码错误提示&#10;&#10;或者粘贴更复杂的需求文档..."></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">优化后的需求文档</div>
+                            <div class="req-output" id="req-output">
+                                <div class="req-placeholder">点击「标准优化」或「详细展开」生成结构化需求文档</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="req-analysis" id="req-analysis" style="display:none;"></div>
+                </div>
+            </section>
+
+            <!-- 生成测试用例 -->
+            <section class="tool-panel" id="panel-testcase">
+                <div class="panel-header">
+                    <h2>🧪 根据需求生成测试用例</h2>
+                    <p>输入需求描述，自动生成功能测试用例（正向流程、异常场景、边界测试）</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_testcase.generate('all')">📋 生成全部用例</button>
+                        <button class="btn btn-outline" onclick="tool_testcase.generate('positive')">✅ 仅正向用例</button>
+                        <button class="btn btn-outline" onclick="tool_testcase.generate('negative')">❌ 仅异常场景</button>
+                        <button class="btn btn-outline" onclick="tool_testcase.generate('boundary')">📏 仅边界测试</button>
+                        <button class="btn btn-outline" onclick="tool_testcase.exportCSV()">📥 导出CSV</button>
+                        <button class="btn btn-outline" onclick="tool_testcase.clear()">🗑️ 清空</button>
+                        <span class="toolbar-status" id="tc-status"></span>
+                    </div>
+                    <div class="io-area tc-io">
+                        <div class="io-panel">
+                            <div class="io-label">需求描述</div>
+                            <textarea id="tc-input" class="code-input" placeholder="输入需求描述，例如：&#10;用户登录功能：&#10;1. 输入用户名和密码，点击登录按钮&#10;2. 验证通过后跳转到首页&#10;3. 用户名或密码错误时显示错误提示&#10;4. 连续5次输错密码锁定账号30分钟&#10;&#10;也可以粘贴更完整的需求文档..."></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">生成的测试用例</div>
+                            <div class="tc-output" id="tc-output">
+                                <div class="tc-placeholder">点击上方按钮生成测试用例</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <!-- 生成Postman脚本 -->
+            <section class="tool-panel" id="panel-postman">
+                <div class="panel-header">
+                    <h2>📮 根据接口文档生成测试用例 &amp; Postman 脚本</h2>
+                    <p>支持 OpenAPI/Swagger JSON 或自由格式接口描述，自动生成接口测试用例、预请求脚本和测试断言</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_postman.generate()">🚀 生成用例+脚本</button>
+                        <button class="btn btn-outline" onclick="tool_postman.generate('cases')">📋 仅生成测试用例</button>
+                        <button class="btn btn-outline" onclick="tool_postman.generate('scripts')">🧪 仅生成脚本</button>
+                        <button class="btn btn-outline" onclick="tool_postman.exportCollection()">📥 导出 Collection</button>
+                        <button class="btn btn-outline" onclick="tool_postman.exportTestCasesCSV()">📊 导出测试用例CSV</button>
+                        <button class="btn btn-outline" onclick="tool_postman.exportEnv()">⚙️ 导出环境变量</button>
+                        <button class="btn btn-outline" onclick="tool_postman.clear()">🗑️ 清空</button>
+                        <span class="toolbar-status" id="pm-status"></span>
+                    </div>
+                    <div class="io-area pm-io">
+                        <div class="io-panel">
+                            <div class="io-label">接口文档</div>
+                            <textarea id="pm-input" class="code-input" placeholder="支持以下输入格式：&#10;&#10;1. OpenAPI/Swagger JSON&#10;2. 自由文本接口描述，例如：&#10;&#10;POST /api/login 用户登录&#10;请求头: Content-Type: application/json&#10;请求体: {"username":"admin","password":"123456"}&#10;响应: {"code":0,"data":{"token":"xxx"}}&#10;&#10;GET /api/users?page=1&size=20&#10;获取用户列表&#10;请求头: Authorization: Bearer {token}&#10;响应: {"code":0,"data":{"list":[...],"total":100}}&#10;&#10;PUT /api/users/:id 更新用户&#10;请求体: {"name":"张三","email":"test@qq.com"}&#10;响应: {"code":0,"data":{...}}&#10;&#10;DELETE /api/users/:id 删除用户&#10;响应: {"code":0,"message":"删除成功"}"></textarea>
+                        </div>
+                        <div class="io-panel">
+                            <div class="io-label">生成的测试用例 &amp; Postman 脚本</div>
+                            <div class="pm-output" id="pm-output">
+                                <div class="pm-placeholder">粘贴接口文档后点击「生成用例+脚本」</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="tool-panel" id="panel-random">
+                <div class="panel-header">
+                    <h2>🎲 随机测试数据生成</h2>
+                    <p>快速生成测试所需的各种随机数据（姓名、手机号、邮箱、身份证等）</p>
+                </div>
+                <div class="panel-body">
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="tool_random.generate('name')">👤 姓名</button>
+                        <button class="btn btn-primary" onclick="tool_random.generate('phone')">📱 手机号</button>
+                        <button class="btn btn-primary" onclick="tool_random.generate('email')">📧 邮箱</button>
+                        <button class="btn btn-primary" onclick="tool_random.generate('idcard')">🪪 身份证号</button>
+                        <button class="btn btn-primary" onclick="tool_random.generate('uuid')">🔢 UUID</button>
+                        <button class="btn btn-primary" onclick="tool_random.generate('number')">🔢 数字</button>
+                        <button class="btn btn-primary" onclick="tool_random.generate('string')">🔤 随机字符串</button>
+                        <button class="btn btn-outline" onclick="tool_random.clear()">🗑️ 清空</button>
+                    </div>
+                    <div class="random-output" id="random-output">
+                        <div class="random-placeholder">点击上方按钮生成测试数据</div>
+                    </div>
+                    <div class="random-pagination-container" id="random-pagination"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
