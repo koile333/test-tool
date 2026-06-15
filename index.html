@@ -3,49 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#f5f6f8">
-    <title>测试工具箱 - QA Tools</title>
+    <meta name="theme-color" content="#2db0a0">
+    <meta name="description" content="QA工程师工具箱 — JSON格式化、接口测试、测试用例生成、Postman脚本等14+实用工具">
+    <meta property="og:title" content="测试工具箱 - QA Engineer Tools">
+    <meta property="og:description" content="JSON格式化、接口测试、测试用例生成等14+实用测试工具">
+    <meta property="og:type" content="website">
+    <title>测试工具箱 — QA Tools</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232db0a0'/><text x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='system-ui'>QA</text></svg>">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <a href="#main-content" class="skip-link">跳到主内容</a>
+    <!-- SVG 图标精灵 — 精密几何图标集 -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+        <symbol id="ic-brackets" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L3 8l5 5"/><path d="M16 3l5 5-5 5"/><line x1="12" y1="20" x2="12" y2="10"/></symbol>
+        <symbol id="ic-diff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+        <symbol id="ic-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
+        <symbol id="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></symbol>
+        <symbol id="ic-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></symbol>
+        <symbol id="ic-type" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></symbol>
+        <symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+        <symbol id="ic-checklist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></symbol>
+        <symbol id="ic-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2h6v6"/><path d="M15 8H9"/><path d="M7 17v-2a2 2 0 012-2h6a2 2 0 012 2v2"/><path d="M2 8h20"/><line x1="18" y1="22" x2="18" y2="17"/></symbol>
+        <symbol id="ic-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></symbol>
+        <symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+        <symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+        <symbol id="ic-hash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></symbol>
+        <symbol id="ic-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></symbol>
+        <symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></symbol>
+        <symbol id="ic-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+        <symbol id="ic-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+        <symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></symbol>
+        <symbol id="ic-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+        <symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></symbol>
+        <symbol id="ic-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></symbol>
+        <symbol id="ic-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></symbol>
+        <symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+        <symbol id="ic-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></symbol>
+        <symbol id="ic-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+        <symbol id="ic-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+        <symbol id="ic-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></symbol>
+    </svg>
     <div class="app">
         <!-- 侧边栏 -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h1>🧰 测试工具箱</h1>
+                <h1><svg class="sidebar-logo" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>测试工具箱</h1>
                 <p>QA Engineer Tools</p>
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" title="收起侧栏" aria-label="收起侧栏">◀</button>
             <nav class="sidebar-nav" id="sidebarNav">
                 <div class="nav-indicator" id="navIndicator"></div>
                 <div class="nav-group">
-                    <div class="nav-group-title">📋 数据处理</div>
-                    <button class="nav-item active" data-tool="json">JSON 格式化</button>
-                    <button class="nav-item" data-tool="diff">文本差异对比</button>
-                    <button class="nav-item" data-tool="sql">SQL 格式化</button>
+                    <div class="nav-group-title">数据处理</div>
+                    <button class="nav-item active" data-tool="json"><svg class="nav-icon"><use href="#ic-brackets"/></svg><span class="nav-label">JSON 格式化</span></button>
+                    <button class="nav-item" data-tool="diff"><svg class="nav-icon"><use href="#ic-diff"/></svg><span class="nav-label">文本差异对比</span></button>
+                    <button class="nav-item" data-tool="sql"><svg class="nav-icon"><use href="#ic-database"/></svg><span class="nav-label">SQL 格式化</span></button>
                 </div>
                 <div class="nav-group">
-                    <div class="nav-group-title">🔐 编码转换</div>
-                    <button class="nav-item" data-tool="base64">Base64 编解码</button>
-                    <button class="nav-item" data-tool="url">URL 编解码</button>
-                    <button class="nav-item" data-tool="unicode">Unicode 转换</button>
+                    <div class="nav-group-title">编码转换</div>
+                    <button class="nav-item" data-tool="base64"><svg class="nav-icon"><use href="#ic-lock"/></svg><span class="nav-label">Base64 编解码</span></button>
+                    <button class="nav-item" data-tool="url"><svg class="nav-icon"><use href="#ic-link"/></svg><span class="nav-label">URL 编解码</span></button>
+                    <button class="nav-item" data-tool="unicode"><svg class="nav-icon"><use href="#ic-type"/></svg><span class="nav-label">Unicode 转换</span></button>
                 </div>
                 <div class="nav-group">
-                    <div class="nav-group-title">📝 需求管理</div>
-                    <button class="nav-item" data-tool="requirement">需求描述优化</button>
-                    <button class="nav-item" data-tool="testcase">生成需求测试用例</button>
+                    <div class="nav-group-title">需求管理</div>
+                    <button class="nav-item" data-tool="requirement"><svg class="nav-icon"><use href="#ic-doc"/></svg><span class="nav-label">需求描述优化</span></button>
+                    <button class="nav-item" data-tool="testcase"><svg class="nav-icon"><use href="#ic-checklist"/></svg><span class="nav-label">生成需求测试用例</span></button>
                 </div>
                 <div class="nav-group">
-                    <div class="nav-group-title">🔌 接口测试</div>
-                    <button class="nav-item" data-tool="apitest">简单接口测试</button>
-                    <button class="nav-item" data-tool="postman">生成接口测试用例或脚本</button>
+                    <div class="nav-group-title">接口测试</div>
+                    <button class="nav-item" data-tool="apitest"><svg class="nav-icon"><use href="#ic-plug"/></svg><span class="nav-label">简单接口测试</span></button>
+                    <button class="nav-item" data-tool="postman"><svg class="nav-icon"><use href="#ic-inbox"/></svg><span class="nav-label">生成接口测试用例或脚本</span></button>
                 </div>
                 <div class="nav-group">
-                    <div class="nav-group-title">🔢 常用工具</div>
-                    <button class="nav-item" data-tool="timestamp">时间戳转换</button>
-                    <button class="nav-item" data-tool="regex">正则表达式测试</button>
-                    <button class="nav-item" data-tool="hash">哈希/MD5 生成</button>
-                    <button class="nav-item" data-tool="random">随机数据生成</button>
+                    <div class="nav-group-title">常用工具</div>
+                    <button class="nav-item" data-tool="timestamp"><svg class="nav-icon"><use href="#ic-clock"/></svg><span class="nav-label">时间戳转换</span></button>
+                    <button class="nav-item" data-tool="regex"><svg class="nav-icon"><use href="#ic-search"/></svg><span class="nav-label">正则表达式测试</span></button>
+                    <button class="nav-item" data-tool="hash"><svg class="nav-icon"><use href="#ic-hash"/></svg><span class="nav-label">哈希/MD5 生成</span></button>
+                    <button class="nav-item" data-tool="random"><svg class="nav-icon"><use href="#ic-shuffle"/></svg><span class="nav-label">随机数据生成</span></button>
                 </div>
             </nav>
             <div class="sidebar-footer">
@@ -54,11 +90,11 @@
         </aside>
 
         <!-- 主内容区 -->
-        <main class="main-content">
+        <main class="main-content" id="main-content">
             <!-- JSON 格式化 -->
             <section class="tool-panel active" id="panel-json">
                 <div class="panel-header">
-                    <h2>📋 JSON 格式化 / 验证</h2>
+                    <h2>JSON 格式化 / 验证</h2>
                     <p>格式化、压缩、验证JSON数据，快速定位语法错误</p>
                 </div>
                 <div class="panel-body">
@@ -85,7 +121,7 @@
             <!-- 文本差异对比 -->
             <section class="tool-panel" id="panel-diff">
                 <div class="panel-header">
-                    <h2>📊 文本差异对比</h2>
+                    <h2>文本差异对比</h2>
                     <p>对比两段文本，快速发现差异（适用接口返回对比、配置对比等）</p>
                 </div>
                 <div class="panel-body">
@@ -116,7 +152,7 @@
             <!-- SQL 格式化 -->
             <section class="tool-panel" id="panel-sql">
                 <div class="panel-header">
-                    <h2>📊 SQL 格式化</h2>
+                    <h2>SQL 格式化</h2>
                     <p>格式化SQL语句，提升可读性，方便排查问题</p>
                 </div>
                 <div class="panel-body">
@@ -141,7 +177,7 @@
             <!-- Base64 编解码 -->
             <section class="tool-panel" id="panel-base64">
                 <div class="panel-header">
-                    <h2>🔐 Base64 编解码</h2>
+                    <h2>Base64 编解码</h2>
                     <p>Base64编码/解码，常用于接口鉴权、数据传输场景</p>
                 </div>
                 <div class="panel-body">
@@ -166,7 +202,7 @@
             <!-- URL 编解码 -->
             <section class="tool-panel" id="panel-url">
                 <div class="panel-header">
-                    <h2>🔗 URL 编解码</h2>
+                    <h2>URL 编解码</h2>
                     <p>URL编码(encodeURIComponent)和解码，处理接口参数</p>
                 </div>
                 <div class="panel-body">
@@ -191,7 +227,7 @@
             <!-- Unicode 转换 -->
             <section class="tool-panel" id="panel-unicode">
                 <div class="panel-header">
-                    <h2>🔤 Unicode 转换</h2>
+                    <h2>Unicode 转换</h2>
                     <p>字符串与Unicode互相转换，处理\uXXXX编码</p>
                 </div>
                 <div class="panel-body">
@@ -216,7 +252,7 @@
             <!-- 时间戳转换 -->
             <section class="tool-panel" id="panel-timestamp">
                 <div class="panel-header">
-                    <h2>⏱️ 时间戳转换</h2>
+                    <h2>时间戳转换</h2>
                     <p>Unix时间戳与日期时间互转，支持秒/毫秒</p>
                 </div>
                 <div class="panel-body">
@@ -251,7 +287,7 @@
             <!-- 正则表达式测试 -->
             <section class="tool-panel" id="panel-regex">
                 <div class="panel-header">
-                    <h2>🔍 正则表达式测试</h2>
+                    <h2>正则表达式测试</h2>
                     <p>在线测试正则表达式，高亮显示匹配结果（接口字段校验、日志分析等）</p>
                 </div>
                 <div class="panel-body">
@@ -288,7 +324,7 @@
             <!-- 哈希/MD5 -->
             <section class="tool-panel" id="panel-hash">
                 <div class="panel-header">
-                    <h2>🔑 哈希 / MD5 生成</h2>
+                    <h2>哈希 / MD5 生成</h2>
                     <p>生成MD5、SHA系列哈希值，用于数据校验、签名验证</p>
                 </div>
                 <div class="panel-body">
@@ -309,7 +345,7 @@
             <!-- 需求描述优化 -->
             <section class="tool-panel" id="panel-requirement">
                 <div class="panel-header">
-                    <h2>📝 需求描述优化</h2>
+                    <h2>需求描述优化</h2>
                     <p>将原始需求描述结构化，补充验收标准、边界条件，提高需求可测性</p>
                 </div>
                 <div class="panel-body">
@@ -338,7 +374,7 @@
             <!-- 生成测试用例 -->
             <section class="tool-panel" id="panel-testcase">
                 <div class="panel-header">
-                    <h2>🧪 根据需求生成测试用例</h2>
+                    <h2>根据需求生成测试用例</h2>
                     <p>输入需求描述，自动生成7大维度测试点（功能测试、边界值、异常处理、性能、安全、兼容性、易用性）</p>
                 </div>
                 <div class="panel-body">
@@ -368,7 +404,7 @@
             <!-- 简单接口测试 -->
             <section class="tool-panel" id="panel-apitest">
                 <div class="panel-header">
-                    <h2>🔌 简单接口测试</h2>
+                    <h2>简单接口测试</h2>
                     <p>输入请求方式、接口地址、请求头、请求体，快速发送接口请求并查看响应结果</p>
                 </div>
                 <div class="panel-body">
@@ -450,7 +486,7 @@
             <!-- 生成Postman脚本 -->
             <section class="tool-panel" id="panel-postman">
                 <div class="panel-header">
-                    <h2>📮 根据接口文档生成测试用例 &amp; Postman 脚本</h2>
+                    <h2>根据接口文档生成测试用例 &amp; Postman 脚本</h2>
                     <p>支持 OpenAPI/Swagger JSON 或自由格式接口描述，自动生成接口测试用例、预请求脚本和测试断言</p>
                 </div>
                 <div class="panel-body">
@@ -479,7 +515,7 @@
             </section>
             <section class="tool-panel" id="panel-random">
                 <div class="panel-header">
-                    <h2>🎲 随机测试数据生成</h2>
+                    <h2>随机测试数据生成</h2>
                     <p>快速生成测试所需的各种随机数据（姓名、手机号、邮箱、身份证等）</p>
                 </div>
                 <div class="panel-body">
