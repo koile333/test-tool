@@ -2,12 +2,14 @@
 const navIndicator = document.getElementById('navIndicator');
 
 function moveNavIndicator(target) {
-    if (!target || !navIndicator) return;
-    const navRect = target.parentElement.getBoundingClientRect();
-    const itemRect = target.getBoundingClientRect();
-    const top = itemRect.top - navRect.top + target.offsetHeight / 2 - 12;
-    navIndicator.style.top = top + 'px';
-    navIndicator.classList.add('visible');
+    try {
+        if (!target || !navIndicator || !target.parentElement) return;
+        const navRect = target.parentElement.getBoundingClientRect();
+        const itemRect = target.getBoundingClientRect();
+        const top = itemRect.top - navRect.top + target.offsetHeight / 2 - 12;
+        navIndicator.style.top = top + 'px';
+        navIndicator.classList.add('visible');
+    } catch (e) { /* 静默忽略初始化时序问题 */ }
 }
 
 // ===== 工具切换 =====
@@ -189,55 +191,151 @@ const tool_diff = {
     }
 };
 
-// ===== 工具：SQL 格式化 =====
+// ===== 工具：SQL执行语句 =====
 const tool_sql = {
-    format() {
-        const input = document.getElementById('sql-input').value.trim();
-        if (!input) return;
-        document.getElementById('sql-output').value = this._formatSQL(input);
+    // ---- 配置（localStorage 持久化） ----
+    _getConfig() {
+        try {
+            const saved = localStorage.getItem('sql_api_config');
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
     },
-    compress() {
-        const input = document.getElementById('sql-input').value.trim();
-        if (!input) return;
-        document.getElementById('sql-output').value = input.replace(/\s+/g, ' ').trim();
+    _saveConfig(cfg) {
+        localStorage.setItem('sql_api_config', JSON.stringify(cfg));
     },
+
+    // ---- 设置面板 ----
+    toggleSettings() {
+        const panel = document.getElementById('sql-settings');
+        const btn = document.getElementById('sql-settings-btn');
+        const visible = panel.style.display !== 'none';
+        panel.style.display = visible ? 'none' : 'block';
+        btn.style.background = visible ? 'transparent' : 'var(--accent-dim)';
+        if (!visible) this._loadSettingsToUI();
+    },
+    _loadSettingsToUI() {
+        const cfg = this._getConfig();
+        document.getElementById('sql-apikey').value = cfg.apiKey || '';
+        document.getElementById('sql-baseurl').value = cfg.baseUrl || 'https://api.openai.com/v1';
+        document.getElementById('sql-model').value = cfg.model || 'gpt-3.5-turbo';
+    },
+    saveSettings() {
+        const cfg = {
+            apiKey: document.getElementById('sql-apikey').value.trim(),
+            baseUrl: document.getElementById('sql-baseurl').value.trim() || 'https://api.openai.com/v1',
+            model: document.getElementById('sql-model').value.trim() || 'gpt-3.5-turbo'
+        };
+        this._saveConfig(cfg);
+        this._showToast('API 设置已保存');
+    },
+
+    // ---- 核心：调用 LLM 生成 SQL ----
+    async generate() {
+        const input = document.getElementById('sql-input').value.trim();
+        if (!input) {
+            this._showToast('请先输入SQL问题描述');
+            return;
+        }
+        const cfg = this._getConfig();
+        if (!cfg.apiKey) {
+            this._showToast('请先配置 API Key（点击 ⚙️ 按钮）');
+            this.toggleSettings();
+            return;
+        }
+
+        const statusEl = document.getElementById('sql-status');
+        const outputEl = document.getElementById('sql-output');
+
+        statusEl.textContent = '生成中...';
+        statusEl.className = 'toolbar-status';
+        outputEl.value = '';
+
+        try {
+            const response = await fetch(cfg.baseUrl.replace(/\/+$/, '') + '/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + cfg.apiKey
+                },
+                body: JSON.stringify({
+                    model: cfg.model,
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `你是一个专业的 SQL 查询助手。根据用户的自然语言描述生成 SQL 语句。
+规则：
+1. 只输出纯 SQL 语句和简短的中文注释，不要输出多余的解释
+2. 用 -- 写单行注释说明每段逻辑
+3. 如果用户提供了表结构（如 +---+ 表格），请根据表名和字段名生成 SQL
+4. 如果是修改操作（UPDATE/DELETE），请先在注释中提醒用户备份数据
+5. 格式清晰，合理换行缩进
+6. 不要包含 markdown 代码块标记，直接输出 SQL`
+                        },
+                        { role: 'user', content: input }
+                    ],
+                    temperature: 0.3,
+                    max_tokens: 2000
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error?.message || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            let sql = data.choices?.[0]?.message?.content || '';
+            // 清理可能的 markdown 包裹
+            sql = sql.replace(/^```sql?\s*\n?/i, '').replace(/\n?```\s*$/, '').trim();
+
+            if (!sql) {
+                throw new Error('API 返回为空');
+            }
+
+            outputEl.value = sql;
+            statusEl.textContent = '✓ 生成完成';
+            statusEl.className = 'toolbar-status success';
+
+        } catch (e) {
+            outputEl.value = '';
+            statusEl.textContent = '✗ ' + e.message;
+            statusEl.className = 'toolbar-status error';
+            this._showToast('生成失败：' + e.message);
+        }
+    },
+
+    copySql() {
+        const output = document.getElementById('sql-output').value.trim();
+        if (!output) return;
+        navigator.clipboard.writeText(output).then(() => {
+            this._showToast('SQL语句已复制');
+        }).catch(() => {
+            const ta = document.getElementById('sql-output');
+            ta.removeAttribute('readonly');
+            ta.select();
+            document.execCommand('copy');
+            ta.setAttribute('readonly', '');
+            this._showToast('SQL语句已复制');
+        });
+    },
+
     clear() {
         document.getElementById('sql-input').value = '';
         document.getElementById('sql-output').value = '';
+        document.getElementById('sql-status').textContent = '';
+        document.getElementById('sql-status').className = 'toolbar-status';
     },
-    _formatSQL(sql) {
-        const keywords = ['SELECT','FROM','WHERE','AND','OR','ORDER BY','GROUP BY','HAVING',
-            'LIMIT','OFFSET','INSERT INTO','VALUES','UPDATE','SET','DELETE FROM',
-            'CREATE TABLE','ALTER TABLE','DROP TABLE','JOIN','LEFT JOIN','RIGHT JOIN',
-            'INNER JOIN','OUTER JOIN','ON','AS','DISTINCT','UNION','ALL','IN','NOT IN',
-            'BETWEEN','LIKE','IS NULL','IS NOT NULL','EXISTS','CASE','WHEN','THEN','ELSE','END'];
-        let result = sql.replace(/\s+/g, ' ').trim();
-        // 主要关键字前换行
-        const majorKw = ['SELECT','INSERT INTO','UPDATE','DELETE FROM','CREATE TABLE','ALTER TABLE','DROP TABLE'];
-        majorKw.forEach(kw => {
-            const re = new RegExp('\\b' + kw.replace(/\s/g, '\\s') + '\\b', 'gi');
-            result = result.replace(re, '\n$&');
-        });
-        keywords.forEach(kw => {
-            const re = new RegExp('\\b' + kw.replace(/\s/g, '\\s') + '\\b', 'gi');
-            result = result.replace(re, '\n  $&');
-        });
-        result = result.replace(/\(\s*/g, '(\n    ').replace(/\s*\)/g, '\n  )');
-        result = result.replace(/,\s*/g, ',\n    ');
-        result = result.replace(/\n\s*\n/g, '\n').trim();
-        // 缩进
-        const lines = result.split('\n');
-        let indent = 0;
-        const out = lines.map(line => {
-            const t = line.trim();
-            if (t.startsWith(')')) indent = Math.max(0, indent - 1);
-            const s = '  '.repeat(indent) + t;
-            if (t.endsWith('(')) indent++;
-            return s;
-        });
-        return out.join('\n');
+
+    _showToast(msg) {
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 1800);
     }
 };
+
+
 
 // ===== 工具：Base64 编解码 =====
 const tool_base64 = {

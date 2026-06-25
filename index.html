@@ -58,7 +58,7 @@
                     <div class="nav-group-title">数据处理</div>
                     <button class="nav-item active" data-tool="json"><svg class="nav-icon"><use href="#ic-brackets"/></svg><span class="nav-label">JSON 格式化</span></button>
                     <button class="nav-item" data-tool="diff"><svg class="nav-icon"><use href="#ic-diff"/></svg><span class="nav-label">文本差异对比</span></button>
-                    <button class="nav-item" data-tool="sql"><svg class="nav-icon"><use href="#ic-database"/></svg><span class="nav-label">SQL 格式化</span></button>
+                    <button class="nav-item" data-tool="sql"><svg class="nav-icon"><use href="#ic-database"/></svg><span class="nav-label">SQL执行语句</span></button>
                 </div>
                 <div class="nav-group">
                     <div class="nav-group-title">编码转换</div>
@@ -149,26 +149,47 @@
                 </div>
             </section>
 
-            <!-- SQL 格式化 -->
+            <!-- SQL执行语句 -->
             <section class="tool-panel" id="panel-sql">
                 <div class="panel-header">
-                    <h2>SQL 格式化</h2>
-                    <p>格式化SQL语句，提升可读性，方便排查问题</p>
+                    <h2>SQL执行语句</h2>
+                    <p>输入自然语言描述，由 AI 生成可执行的 SQL 语句</p>
                 </div>
                 <div class="panel-body">
                     <div class="toolbar">
-                        <button class="btn btn-primary" onclick="tool_sql.format()">🎨 格式化</button>
-                        <button class="btn btn-outline" onclick="tool_sql.compress()">📦 压缩</button>
+                        <button class="btn btn-primary" onclick="tool_sql.generate()">⚡ 生成SQL</button>
+                        <button class="btn btn-outline" onclick="tool_sql.copySql()">📋 复制SQL</button>
                         <button class="btn btn-outline" onclick="tool_sql.clear()">🗑️ 清空</button>
+                        <button class="btn btn-outline" onclick="tool_sql.toggleSettings()" id="sql-settings-btn" title="API设置">⚙️</button>
+                        <span class="toolbar-status" id="sql-status"></span>
                     </div>
-                    <div class="io-area">
+                    <!-- API 设置面板 -->
+                    <div class="sql-settings" id="sql-settings" style="display:none">
+                        <div class="settings-row">
+                            <label>API Key</label>
+                            <input type="password" id="sql-apikey" placeholder="sk-..." autocomplete="off">
+                        </div>
+                        <div class="settings-row">
+                            <label>Base URL</label>
+                            <input type="text" id="sql-baseurl" placeholder="https://api.openai.com/v1">
+                        </div>
+                        <div class="settings-row">
+                            <label>Model</label>
+                            <input type="text" id="sql-model" placeholder="gpt-3.5-turbo">
+                        </div>
+                        <button class="btn btn-outline btn-small" onclick="tool_sql.saveSettings()">💾 保存设置</button>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:18px">
                         <div class="io-panel">
-                            <div class="io-label">输入</div>
-                            <textarea id="sql-input" class="code-input" spellcheck="false" placeholder="SELECT * FROM users WHERE status=1 ORDER BY id DESC LIMIT 10;"></textarea>
+                            <div class="io-label">SQL问题</div>
+                            <textarea id="sql-input" class="code-input" spellcheck="false" placeholder="输入自然语言描述，如：
+• 查询country为CN且alexa大于50的所有网站
+• 把菜鸟教程的alexa排名更新为5000，country改为USA
+• 创建学生表，包含id、name、age字段"></textarea>
                         </div>
                         <div class="io-panel">
-                            <div class="io-label">输出</div>
-                            <textarea id="sql-output" class="code-input" readonly placeholder="格式化结果"></textarea>
+                            <div class="io-label">生成SQL</div>
+                            <textarea id="sql-output" class="code-input" readonly placeholder="AI 生成的 SQL 语句将显示在此处"></textarea>
                         </div>
                     </div>
                 </div>
@@ -538,6 +559,8 @@
         </main>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=20250626c"></script>
+
+
 </body>
 </html>
